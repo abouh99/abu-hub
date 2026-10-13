@@ -1,0 +1,18 @@
+{
+  "name": "Abu.Hub — Makers Market",
+  "short_name": "Abu.Hub",
+  "description": "Beautiful handmade goods from independent makers.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FAF6F0",
+  "theme_color": "#191512",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=512&q=80&auto=format&fit=crop",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
