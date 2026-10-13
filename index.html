@@ -705,6 +705,17 @@ tailwind.config = {
   </form>
 </div>
 
+<!-- Mobile bottom tab bar -->
+<nav id="mobileTabs" class="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-cream/95 backdrop-blur-xl border-t border-line" style="padding-bottom:env(safe-area-inset-bottom)">
+  <div class="grid grid-cols-5 text-[11px] font-semibold">
+    <button onclick="go('home')" data-tab="home" class="mtab"><span>⌂</span>Home</button>
+    <button onclick="go('shop')" data-tab="shop" class="mtab"><span>⊞</span>Shop</button>
+    <button onclick="openWishlist()" data-tab="wish" class="mtab relative"><span>♡</span>Wishlist<span id="mWishN" class="hidden absolute top-1 right-1/2 translate-x-5 min-w-[16px] h-4 px-1 rounded-full bg-clay text-white text-[10px] items-center justify-center">0</span></button>
+    <button onclick="openCart()" data-tab="cart" class="mtab relative"><span>🧺</span>Cart<span id="mCartN" class="hidden absolute top-1 right-1/2 translate-x-5 min-w-[16px] h-4 px-1 rounded-full bg-ink text-cream text-[10px] items-center justify-center">0</span></button>
+    <button onclick="openAuth()" data-tab="account" class="mtab"><span>◉</span>Account</button>
+  </div>
+</nav>
+
 <div id="toasts" class="fixed bottom-5 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-6 z-[80] space-y-2 w-[calc(100%-2rem)] sm:w-[360px]"></div>
 
 <!-- WhatsApp support float -->
