@@ -1,0 +1,25 @@
+# Abu.Hub — Render blueprint: 1 web service (API). Frontend stays on Vercel.
+services:
+  - type: web
+    name: abuhub-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://abuhub-sigma.vercel.app
+      - key: FLW_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+    # Optional persistence for server/data/db.json:
+    # disk:
+    #   name: abuhub-data
+    #   mountPath: /opt/render/project/src/server/data
+    #   sizeGB: 1
