@@ -76,6 +76,386 @@ async function api(path, opts = {}) {
   return j;
 }
 
+/* ---------- Multi-language EN/SW/FR (auto-translates UI, seller content stays) ---------- */
+let lang = localStorage.getItem("abuhub_lang") || "en";
+const I18N = { sw: {}, fr: {} };
+const _origText = new Map(), _origPh = new Map();
+function T(en) { return (lang !== "en" && I18N[lang][en]) || en; }
+function setLang(l) {
+  lang = I18N[l] ? l : "en";
+  localStorage.setItem("abuhub_lang", lang);
+  $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
+  document.documentElement.lang = lang;
+  restoreLang(); applyLang(); refreshDynamic();
+  setTimeout(applyLang, 400);
+  toast(lang === "sw" ? "Lugha: Kiswahili ✓" : lang === "fr" ? "Langue : Français ✓" : "Language: English ✓");
+}
+function restoreLang() {
+  _origText.forEach((o, n) => { try { if (n.isConnected) n.nodeValue = o; } catch {} });
+  _origText.clear();
+  _origPh.forEach((o, el) => { try { if (el.isConnected) el.setAttribute("placeholder", o); } catch {} });
+  _origPh.clear();
+}
+function applyLang() {
+  if (lang === "en") return;
+  const dict = I18N[lang]; if (!dict) return;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      const p = n.parentElement;
+      if (!p || p.closest("script,style,noscript")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  nodes.forEach(n => {
+    const key = n.nodeValue.trim();
+    if (dict[key] && !_origText.has(n)) { _origText.set(n, n.nodeValue); n.nodeValue = n.nodeValue.replace(key, dict[key]); }
+  });
+  $$("[placeholder]").forEach(el => {
+    const key = (el.getAttribute("placeholder") || "").trim();
+    if (key && dict[key] && !_origPh.has(el)) { _origPh.set(el, el.getAttribute("placeholder")); el.setAttribute("placeholder", dict[key]); }
+  });
+}
+let _langT = null;
+function observeLang() {
+  new MutationObserver(() => { clearTimeout(_langT); _langT = setTimeout(() => { if (lang !== "en") applyLang(); }, 250); })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+/* --- dictionary: header / hero / home --- */
+Object.assign(I18N.sw, {
+  "Shop all": "Duka", "Fashion": "Mitindo", "Home": "Nyumbani", "Vendors": "Wauzaji", "Our story": "Hadithi yetu",
+  "2,400+ sellers live": "Wauzaji 2,400+ mtandaoni", "Search makers, goods…": "Tafuta mafundi, bidhaa…",
+  "Search the marketplace…": "Tafuta sokoni…", "Sell on Abu.Hub": "Uza kwenye Abu.Hub",
+  "Home & Living": "Nyumba na Maisha", "Our impact →": "Athari yetu →",
+  "✦ New season drop": "✦ Msimu mpya umefika", "Verified artisans only": "Mafundi walioidhinishwa tu",
+  "Beautiful things,": "Vitu vizuri,", "made by": "vilivyotengenezwa na", "real hands.": "mikono halisi.",
+  "Shop 12,000+ small-batch goods from 2,400 independent sellers — fashion, home, beauty & craft, all in one elegant market.": "Nunua bidhaa 12,000+ za kipekee kutoka kwa wauzaji 2,400 huru — mitindo, nyumbani, urembo na ufundi, zote katika soko moja maridadi.",
+  "Shop the marketplace": "Nunua sokoni", "Meet the makers": "Kutana na mafundi",
+  "from 48,000+ happy shoppers": "kutoka kwa wanunuzi 48,000+ wenye furaha",
+  "Curated · 214 pieces": "Iliyochaguliwa · vipande 214", "The Handmade Table": "Meza ya Mafundi",
+  "Shop home →": "Nunua vya nyumbani →", "For makers": "Kwa mafundi",
+  "Sell to 190k monthly shoppers. 0 listing fees.": "Wauzie wanunuzi 190k kila mwezi. Ada 0 kuorodhesha.",
+  "Open your shop": "Fungua duka lako", "Glow Rituals": "Mila za Kung'aa", "Botanical bestsellers": "Vinavyouzwa sana vya mimea",
+  "Buyer protection": "Ulinzi wa mnunuzi", "Full refund if it’s not as described": "Rudishiwa pesa kamili kama si kama ilivyoelezwa",
+  "Verified sellers": "Wauzaji walioidhinishwa", "Every maker is ID & quality checked": "Kila fundi amehakikiwa ubora",
+  "Fast, tracked shipping": "Usafirishaji wa haraka", "30-day returns": "Kurudisha siku 30",
+  "No questions, prepaid label": "Bila maswali, lebo hulipwa",
+  "Browse by craft": "Tafuta kwa ufundi", "Shop by category": "Nunua kwa kategoria", "View everything →": "Tazama vyote →",
+  "Loved right now": "Vinavyopendwa sasa", "Trending across the Hub": "Zinazotrendi Hub",
+  "Explore all 12,000+ goods": "Gundua bidhaa 12,000+", "All": "Zote",
+  "Hot right now": "Moto sasa hivi", "Frequently searched": "Zinazotafutwa sana", "Search everything →": "Tafuta vyote →",
+  "Verified by 48,000+ reviews": "Imethibitishwa na tathmini 48,000+", "Top ranking this week": "Bora wiki hii",
+  "Shop all →": "Nunua zote →", "Autumn Market Week · ends in": "Wiki ya Soko · inaisha baada ya",
+  "days": "siku", "hrs": "saa", "min": "dak", "sec": "sek",
+  "Up to 30% off handmade icons": "Punguzo hadi 30% kwa bidhaa asilia",
+  "Stack code": "Tumia msimbo", "on top of sale prices.": "pamoja na bei za ofa.",
+  "Shop the sale →": "Nunua ofa →", "Coupon centre · tap to copy": "Kituo cha kuponi · gusa kunakili",
+  "Steals under $50": "Ofa chini ya $50",
+  "Picked up where you left off": "Endelea ulipoishia", "Recently viewed": "Uliyotazama hivi karibuni", "Clear": "Futa",
+  "Visit their shop": "Tembelea duka lake", "Makers": "Mafundi", "Paid to sellers": "Zimelipwa kwa wauzaji",
+  "5-star reviews": "Tathmini 5-nyota", "Editor’s curation": "Uchaguzi wa mhariri", "Collections to get lost in": "Makusanyo ya kupotelea",
+  "Independent & proud": "Huru na wenye fahari", "Star sellers this week": "Wauzaji nyota wiki hii",
+  "All vendors →": "Wauzaji wote →", "Pavilions": "Mabanda", "Shop by origin": "Nunua kwa asili"
+});
+/* --- dictionary: sellers / custom / promise / reviews / newsletter / footer --- */
+Object.assign(I18N.sw, {
+  "For sellers": "Kwa wauzaji", "Open your shop in an afternoon": "Fungua duka lako mchana mmoja",
+  "No listing fees, no code, no warehouse. Just your craft and our 190,000 monthly shoppers. Keep up to 92% of every sale.": "Hakuna ada za kuorodhesha, hakuna kodi, hakuna ghala. Ufundi wako tu na wanunuzi wetu 190,000 kila mwezi. Baki na hadi 92% ya kila mauzo.",
+  "Start selling — it’s free": "Anza kuuza — ni bure",
+  "Create your storefront": "Tengeneza duka lako", "Logo, story, policies — guided in 10 minutes.": "Nembo, hadithi, sera — mwongozo wa dakika 10.",
+  "List your goods": "Orodhesha bidhaa zako", "Photos, variants, stock. We handle VAT & fees.": "Picha, aina, akiba. Tunashughulikia VAT na ada.",
+  "Get paid fast": "Lipwa haraka", "Daily payouts to bank or mobile money.": "Malipo ya kila siku kwa benki au pesa za simu.",
+  "Custom & bespoke": "Vya kuagiza maalum", "Dream it. A maker will quote it.": "Iote. Fundi atakupa bei.",
+  "Wedding sets, bulk gifts, your measurements, your colours. Post one request — matching makers reply with quotes, usually within 48 hours. Free to post.": "Seti za harusi, zawadi za jumla, vipimo vyako, rangi zako. Tuma ombi moja — mafundi hujibu na bei, kawaida ndani ya saa 48. Bure kutuma.",
+  "Request a custom order →": "Agiza maalum →", "Browse makers": "Tafuta mafundi",
+  "2,300+ custom orders": "Maagizo maalum 2,300+", "delivered this year · avg. quote in 31 hrs": "yametolewa mwaka huu · wastani wa bei saa 31",
+  "Dropshipping centre": "Kituo cha dropshipping", "Sell handmade. Hold zero stock.": "Uza vya mikono. Bila stok yoyote.",
+  "List goods from verified makers in your own shop. They pack & ship directly to your customer — unbranded on request — and you keep the margin. No warehouse, no upfront stock.": "Orodhesha bidhaa za mafundi walioidhinishwa dukani kwako. Wanafunga na kutuma moja kwa moja kwa mteja wako — bila chapa ukiomba — na wewe unabaki na faida. Hakuna ghala, hakuna stok ya awali.",
+  "01 · Pick": "01 · Chagua", "02 · List": "02 · Orodhesha", "03 · Earn": "03 · Pata",
+  "Filter Shop → 📦 Ships from maker. 9 goods live.": "Chuja Duka → 📦 Zinazosafirishwa na fundi. Bidhaa 9 mtandaoni.",
+  "Re-list in your shop with your price. Maker ships.": "Orodhesha tena dukani kwako na bei yako. Fundi anatuma.",
+  "You keep the margin. Payouts to bank or mobile money.": "Unabaki na faida. Malipo kwa benki au pesa za simu.",
+  "Browse dropship goods 📦": "Tazama bidhaa za dropshipping 📦", "Become a reseller →": "Kuwa muuzaji wa jumla →",
+  "4 dropship partners": "Washirika 4 wa dropshipping", "· 5–9 day direct delivery · buyer protection included": "· uwasilishaji wa moja kwa moja siku 5–9 · ulinzi wa mnunuzi umejumuishwa",
+  "📦 Dropship partner": "📦 Mshirika wa dropshipping", "📦 DROPSHIP PARTNER": "📦 MSHIRIKA WA DROPSHIPPING",
+  "The Abu.Hub Promise": "Ahadi ya Abu.Hub", "Every order, protected end-to-end": "Kila agizo, limelindwa kuanzia mwanzo hadi mwisho",
+  "Secure payments": "Malipo salama", "Cards, M-Pesa & bank via PCI-compliant gateways. We never see your card number.": "Kadi, M-Pesa na benki kupitia malango salama. Hatuoni namba ya kadi yako.",
+  "Guaranteed delivery": "Uwasilishaji wa uhakika", "Tracked 3–6 day shipping. Late or lost? Full refund, no forms marathon.": "Usafirishaji wa siku 3–6 unaofuatiliwa. Kuchelewa au kupotea? Rudishiwa pesa kamili.",
+  "Money-back guarantee": "Dhamana ya kurejeshewa pesa", "Not as described? 30 days, prepaid return label, money back.": "Si kama ilivyoelezwa? Siku 30, lebo ya kurudisha hulipwa, pesa zinarudi.",
+  "After-sales care": "Huduma baada ya mauzo", "Real humans + makers on chat. Disputes resolved in under 72 hours.": "Watu halisi + mafundi kwenye gumzo. Migogoro hutatuliwa chini ya saa 72.",
+  "Wall of love": "Ukuta wa mapenzi", "48,000+ five-star moments": "Matukio 48,000+ ya nyota tano",
+  "The Sunday Shelf": "Rafu ya Jumapili", "Get 10% off your first maker order": "Pata 10% kwa agizo lako la kwanza",
+  "One beautiful email a week. New drops, maker stories, private sales. No spam, ever.": "Barua moja nzuri kwa wiki. Bidhaa mpya, hadithi za mafundi, ofa za siri. Hakuna taka, kamwe.",
+  "Claim 10% off": "Dai 10%", "By joining you agree to our Terms. Unsubscribe anytime.": "Kwa kujiunga unakubali Masharti yetu. Jiondoe wakati wowote.",
+  "The premium marketplace for independent makers. Verified sellers, buyer protection, and beautiful goods — delivered worldwide.": "Soko bora kwa mafundi huru. Wauzaji walioidhinishwa, ulinzi wa mnunuzi, na bidhaa nzuri — zinawasilishwa duniani kote.",
+  "Shop": "Duka", "All goods": "Bidhaa zote", "Beauty": "Urembo", "Jewelry": "Mapambo",
+  "Sellers": "Wauzaji", "Start selling": "Anza kuuza", "Find vendors": "Tafuta wauzaji",
+  "Seller handbook": "Mwongozo wa muuzaji", "Fees & payouts": "Ada na malipo", "Support": "Msaada",
+  "📦 Track your order": "📦 Fuatilia agizo lako", "Help centre": "Kituo cha msaada",
+  "Shipping & returns": "Usafirishaji na kurudisha",
+  "© 2026 Abu.Hub Marketplace · Crafted for makers, with care.": "© 2026 Soko la Abu.Hub · Imetengenezwa kwa mafundi, kwa upendo."
+});
+Object.assign(I18N.fr, {
+  "For sellers": "Pour les vendeurs", "Open your shop in an afternoon": "Ouvrez votre boutique en un après-midi",
+  "No listing fees, no code, no warehouse. Just your craft and our 190,000 monthly shoppers. Keep up to 92% of every sale.": "Ni frais d'annonce, ni code, ni entrepôt. Juste votre artisanat et nos 190 000 acheteurs mensuels. Gardez jusqu'à 92 % de chaque vente.",
+  "Start selling — it’s free": "Commencez à vendre — c'est gratuit",
+  "Create your storefront": "Créez votre vitrine", "Logo, story, policies — guided in 10 minutes.": "Logo, histoire, règles — guidé en 10 minutes.",
+  "List your goods": "Listez vos articles", "Photos, variants, stock. We handle VAT & fees.": "Photos, variantes, stock. Nous gérons TVA et frais.",
+  "Get paid fast": "Soyez payé vite", "Daily payouts to bank or mobile money.": "Paiements quotidiens par banque ou mobile money.",
+  "Custom & bespoke": "Sur mesure", "Dream it. A maker will quote it.": "Rêvez-le. Un créateur vous le chiffrera.",
+  "Wedding sets, bulk gifts, your measurements, your colours. Post one request — matching makers reply with quotes, usually within 48 hours. Free to post.": "Parures de mariage, cadeaux en gros, vos mesures, vos couleurs. Une demande — les créateurs répondent sous 48h. Gratuit.",
+  "Request a custom order →": "Commander sur mesure →", "Browse makers": "Parcourir les créateurs",
+  "2,300+ custom orders": "2 300+ commandes sur mesure", "delivered this year · avg. quote in 31 hrs": "livrées cette année · devis moyen en 31 h",
+  "Dropshipping centre": "Centre dropshipping", "Sell handmade. Hold zero stock.": "Vendez artisanal. Zéro stock.",
+  "List goods from verified makers in your own shop. They pack & ship directly to your customer — unbranded on request — and you keep the margin. No warehouse, no upfront stock.": "Listez les articles de créateurs vérifiés dans votre boutique. Ils emballent et expédient directement — sans marque sur demande — et vous gardez la marge. Ni entrepôt, ni stock initial.",
+  "01 · Pick": "01 · Choisir", "02 · List": "02 · Lister", "03 · Earn": "03 · Gagner",
+  "Filter Shop → 📦 Ships from maker. 9 goods live.": "Filtrez Boutique → 📦 Expédié par le créateur. 9 articles en ligne.",
+  "Re-list in your shop with your price. Maker ships.": "Re-listez avec votre prix. Le créateur expédie.",
+  "You keep the margin. Payouts to bank or mobile money.": "Vous gardez la marge. Paiements par banque ou mobile money.",
+  "Browse dropship goods 📦": "Voir les articles dropshipping 📦", "Become a reseller →": "Devenir revendeur →",
+  "4 dropship partners": "4 partenaires dropshipping", "· 5–9 day direct delivery · buyer protection included": "· livraison directe 5–9 jours · protection acheteur incluse",
+  "📦 Dropship partner": "📦 Partenaire dropshipping", "📦 DROPSHIP PARTNER": "📦 PARTENAIRE DROPSHIPPING",
+  "The Abu.Hub Promise": "La Promesse Abu.Hub", "Every order, protected end-to-end": "Chaque commande, protégée de bout en bout",
+  "Secure payments": "Paiements sécurisés", "Cards, M-Pesa & bank via PCI-compliant gateways. We never see your card number.": "Cartes, M-Pesa et banque via passerelles conformes PCI. Nous ne voyons jamais votre numéro.",
+  "Guaranteed delivery": "Livraison garantie", "Tracked 3–6 day shipping. Late or lost? Full refund, no forms marathon.": "Livraison suivie 3–6 jours. En retard ou perdu ? Remboursement intégral.",
+  "Money-back guarantee": "Garantie satisfait ou remboursé", "Not as described? 30 days, prepaid return label, money back.": "Non conforme ? 30 jours, étiquette prépayée, argent rendu.",
+  "After-sales care": "Service après-vente", "Real humans + makers on chat. Disputes resolved in under 72 hours.": "De vrais humains + créateurs sur le chat. Litiges résolus en moins de 72 h.",
+  "Wall of love": "Mur d'amour", "48,000+ five-star moments": "48 000+ moments 5 étoiles",
+  "The Sunday Shelf": "L'Étagère du Dimanche", "Get 10% off your first maker order": "−10% sur votre première commande",
+  "One beautiful email a week. New drops, maker stories, private sales. No spam, ever.": "Un bel e-mail par semaine. Nouveautés, histoires de créateurs, ventes privées. Zéro spam, jamais.",
+  "Claim 10% off": "Recevoir −10%", "By joining you agree to our Terms. Unsubscribe anytime.": "En vous inscrivant, vous acceptez nos CGU. Désinscription à tout moment.",
+  "The premium marketplace for independent makers. Verified sellers, buyer protection, and beautiful goods — delivered worldwide.": "La place premium des créateurs indépendants. Vendeurs vérifiés, protection acheteur, beaux articles — livrés dans le monde entier.",
+  "Shop": "Boutique", "All goods": "Tous les articles", "Beauty": "Beauté", "Jewelry": "Bijoux",
+  "Sellers": "Vendeurs", "Start selling": "Commencer à vendre", "Find vendors": "Trouver des vendeurs",
+  "Seller handbook": "Guide du vendeur", "Fees & payouts": "Frais et paiements", "Support": "Assistance",
+  "📦 Track your order": "📦 Suivre ma commande", "Help centre": "Centre d'aide",
+  "Shipping & returns": "Livraison et retours",
+  "© 2026 Abu.Hub Marketplace · Crafted for makers, with care.": "© 2026 Place Abu.Hub · Fait pour les créateurs, avec soin."
+});
+/* --- dictionary: shop / vendors / about / cart / product / checkout / accounts --- */
+Object.assign(I18N.sw, {
+  "The marketplace": "Soko", "Shop all goods": "Nunua bidhaa zote", "☰ Filters": "☰ Vichujio",
+  "Filters": "Vichujio", "Clear all": "Futa vyote", "Search": "Tafuta", "Try ‘lamp’, ‘pearl’…": "Jaribu ‘taa’, ‘lulu’…",
+  "Category": "Kategoria", "Max price ·": "Bei ya juu ·", "Rating": "Tathmini", "Any": "Zote",
+  "Vendor": "Muuzaji", "Fulfilment": "Utekelezaji", "📦 Ships from maker (dropship)": "📦 Inasafirishwa na fundi",
+  "Sort": "Panga", "Featured": "Zilizoangaziwa", "Price: low → high": "Bei: chini → juu",
+  "Price: high → low": "Bei: juu → chini", "Top rated": "Zilizopewa juu",
+  "Nothing found — yet.": "Hakuna kilichopatikana — bado.", "Try a different search or clear filters.": "Jaribu utafutaji mwingine au futa vichujio.",
+  "Clear filters": "Futa vichujio",
+  "2,400+ independent shops": "Maduka huru 2,400+", "Meet the vendors": "Kutana na wauzaji",
+  "Every seller is identity-verified and quality-checked. Follow your favourites and get notified of new drops.": "Kila muuzaji amethibitishwa na ubora umehakikiwa. Wafuate vipendwa vyako upate taarifa za bidhaa mpya.",
+  "Search vendors… e.g. ‘kiln’, ‘coffee’": "Tafuta wauzaji… mf. ‘kinu’, ‘kahawa’",
+  "← All vendors": "← Wauzaji wote", "Goods from this shop": "Bidhaa za duka hili",
+  "A market where makers keep the magic": "Soko ambapo mafundi huhifadhi uchawi", "— and the margin.": "— na faida.",
+  "paid to makers": "zimelipwa kwa mafundi", "monthly shoppers": "wanunuzi wa kila mwezi", "countries served": "nchi zinazohudumiwa",
+  "Have something beautiful to sell?": "Una kitu kizuri cha kuuza?",
+  "Join 2,400+ makers. Free to start, live in a day.": "Jiunge na mafundi 2,400+. Bure kuanza, mtandaoni kwa siku.",
+  "Your basket": "Kikapu chako", "Subtotal": "Jumla ndogo", "Shipping": "Usafirishaji",
+  "Checkout securely →": "Lipa kwa usalama →", "Continue shopping": "Endelea kununua",
+  "Your basket is empty": "Kikapu chako kiko wazi", "Beautiful handmade things await.": "Vitu vizuri vya mikono vinakungoja.",
+  "Start shopping": "Anza kununua", "Wishlist": "Orodha ya matamanio", "Nothing saved yet": "Hakuna kilichohifadhiwa",
+  "Tap the heart on anything you love.": "Gusa moyo kwa chochote unachokipenda.",
+  "Finish / Variant": "Malizia / Aina", "Add to basket ·": "Weka kikapuni ·",
+  "🚚 Order today, get it by": "🚚 Agiza leo, pokea", "Buy it now →": "Nunua sasa →",
+  "Pairs well with": "Vinaendana na", "3–6 day track": "ufuatiliaji siku 3–6", "Prepaid label": "Lebo hulipwa",
+  "Buyer cover": "Ulinzi wa mnunuzi", "Full refund": "Rudishiwa kamili",
+  "Secure checkout": "Malipo salama", "Details": "Maelezo", "Payment": "Malipo",
+  "First name *": "Jina la kwanza *", "Last name *": "Jina la ukoo *", "Email address": "Barua pepe",
+  "Phone / WhatsApp": "Simu / WhatsApp", "Continue to shipping →": "Endelea kwa usafirishaji →",
+  "Street address *": "Anwani ya mtaa *", "City *": "Jiji *", "Country *": "Nchi *",
+  "Standard tracked ·": "Kawaida inayofuatiliwa ·", "3–6 business days": "siku 3–6 za kazi",
+  "1–2 business days": "siku 1–2 za kazi", "← Back": "← Nyuma", "Continue to payment →": "Endelea kwa malipo →",
+  "Order summary": "Muhtasari wa agizo", "Promo code (try ABUHUB10)": "Msimbo wa ofa (jaribu ABUHUB10)",
+  "Coupon code (try MAKER15)": "Msimbo wa kuponi (jaribu MAKER15)", "Apply": "Tumia",
+  "Keep shopping →": "Endelea kununua →", "Back home": "Rudi nyumbani",
+  "Welcome to Abu.Hub": "Karibu Abu.Hub", "Sign in to track orders & follow makers.": "Ingia kufuatilia maagizo na kufuata mafundi.",
+  "Sign in": "Ingia", "Create account": "Fungua akaunti", "Your name": "Jina lako", "Your email": "Barua pepe yako",
+  "Email *": "Barua pepe *", "Password": "Nenosiri", "Continue →": "Endelea →",
+  "Protected by password on this device.": "Imelindwa na nenosiri kwenye kifaa hiki.",
+  "No orders yet — they’ll appear here after checkout.": "Hakuna maagizo bado — yataonekana hapa baada ya malipo.",
+  "Sign out": "Toka",
+  "Open your shop today. Keep 92%.": "Fungua duka lako leo. Baki na 92%.",
+  "listing fees": "ada za kuorodhesha", "max commission": "kamisheni ya juu", "to go live": "kwenda mtandaoni",
+  "Shop name *": "Jina la duka *", "Tell shoppers what you make…": "Waambie wanunuzi unachotengeneza…",
+  "Submit application →": "Tuma ombi →",
+  "Custom order request · free": "Ombi maalum · bure", "What should makers create for you?": "Mafundi wakutengenezee nini?",
+  "Post request → get quotes in ~48h": "Tuma ombi → pata bei ndani ya ~saa 48",
+  "Makers reply with price + timeline. You pick — no obligation.": "Mafundi hujibu na bei + muda. Unachagua — hakuna lazima.",
+  "Order tracking": "Ufuatiliaji wa agizo", "Where’s my order?": "Agizo langu liko wapi?",
+  "Order ref e.g. AH-XXXXXX": "Kumbukumbu mf. AH-XXXXXX", "Track": "Fuatilia",
+  "Online · replies instantly": "Mtandaoni · anajibu papo hapo", "Type a message…": "Andika ujumbe…",
+  "Your shop here? Join free →": "Duka lako hapa? Jiunge bure →",
+  "Signed out.": "Umetoka.", "Saved to wishlist ♥": "Imehifadhiwa ♥", "Removed from wishlist": "Imeondolewa kwenye orodha"
+});
+Object.assign(I18N.fr, {
+  "The marketplace": "Le marché", "Shop all goods": "Tous les articles", "☰ Filters": "☰ Filtres",
+  "Filters": "Filtres", "Clear all": "Tout effacer", "Search": "Rechercher", "Try ‘lamp’, ‘pearl’…": "Essayez ‘lampe’, ‘perle’…",
+  "Category": "Catégorie", "Max price ·": "Prix max ·", "Rating": "Note", "Any": "Tous",
+  "Vendor": "Vendeur", "Fulfilment": "Expédition", "📦 Ships from maker (dropship)": "📦 Expédié par le créateur",
+  "Sort": "Trier", "Featured": "En vedette", "Price: low → high": "Prix croissant",
+  "Price: high → low": "Prix décroissant", "Top rated": "Mieux notés",
+  "Nothing found — yet.": "Rien trouvé — pour l'instant.", "Try a different search or clear filters.": "Essayez une autre recherche ou effacez les filtres.",
+  "Clear filters": "Effacer les filtres",
+  "2,400+ independent shops": "2 400+ boutiques indépendantes", "Meet the vendors": "Rencontrez les vendeurs",
+  "Every seller is identity-verified and quality-checked. Follow your favourites and get notified of new drops.": "Chaque vendeur est vérifié. Suivez vos favoris pour les nouveautés.",
+  "Search vendors… e.g. ‘kiln’, ‘coffee’": "Rechercher vendeurs… ex. ‘four’, ‘café’",
+  "← All vendors": "← Tous les vendeurs", "Goods from this shop": "Articles de cette boutique",
+  "A market where makers keep the magic": "Un marché où les créateurs gardent la magie", "— and the margin.": "— et la marge.",
+  "paid to makers": "versés aux créateurs", "monthly shoppers": "acheteurs mensuels", "countries served": "pays desservis",
+  "Have something beautiful to sell?": "Quelque chose de beau à vendre ?",
+  "Join 2,400+ makers. Free to start, live in a day.": "Rejoignez 2 400+ créateurs. Gratuit, en ligne en un jour.",
+  "Your basket": "Votre panier", "Subtotal": "Sous-total", "Shipping": "Livraison",
+  "Checkout securely →": "Payer en sécurité →", "Continue shopping": "Continuer mes achats",
+  "Your basket is empty": "Votre panier est vide", "Beautiful handmade things await.": "De beaux articles artisanaux vous attendent.",
+  "Start shopping": "Commencer mes achats", "Wishlist": "Favoris", "Nothing saved yet": "Rien enregistré",
+  "Tap the heart on anything you love.": "Touchez le cœur de vos coups de cœur.",
+  "Finish / Variant": "Finition / Variante", "Add to basket ·": "Ajouter au panier ·",
+  "🚚 Order today, get it by": "🚚 Commandez, reçu le", "Buy it now →": "Acheter →",
+  "Pairs well with": "Va bien avec", "3–6 day track": "suivi 3–6 jours", "Prepaid label": "Étiquette prépayée",
+  "Buyer cover": "Protection acheteur", "Full refund": "Remboursement intégral",
+  "Secure checkout": "Paiement sécurisé", "Details": "Coordonnées", "Payment": "Paiement",
+  "First name *": "Prénom *", "Last name *": "Nom *", "Email address": "E-mail",
+  "Phone / WhatsApp": "Téléphone / WhatsApp", "Continue to shipping →": "Continuer vers la livraison →",
+  "Street address *": "Adresse *", "City *": "Ville *", "Country *": "Pays *",
+  "Standard tracked ·": "Standard suivi ·", "3–6 business days": "3–6 jours ouvrés",
+  "1–2 business days": "1–2 jours ouvrés", "← Back": "← Retour", "Continue to payment →": "Continuer vers le paiement →",
+  "Order summary": "Résumé", "Promo code (try ABUHUB10)": "Code promo (essayez ABUHUB10)",
+  "Coupon code (try MAKER15)": "Code coupon (essayez MAKER15)", "Apply": "Appliquer",
+  "Keep shopping →": "Continuer mes achats →", "Back home": "Accueil",
+  "Welcome to Abu.Hub": "Bienvenue sur Abu.Hub", "Sign in to track orders & follow makers.": "Connectez-vous pour suivre commandes et créateurs.",
+  "Sign in": "Se connecter", "Create account": "Créer un compte", "Your name": "Votre nom", "Your email": "Votre e-mail",
+  "Email *": "E-mail *", "Password": "Mot de passe", "Continue →": "Continuer →",
+  "Protected by password on this device.": "Protégé par mot de passe sur cet appareil.",
+  "No orders yet — they’ll appear here after checkout.": "Aucune commande — elles apparaîtront ici après achat.",
+  "Sign out": "Déconnexion",
+  "Open your shop today. Keep 92%.": "Ouvrez votre boutique aujourd'hui. Gardez 92 %.",
+  "listing fees": "frais d'annonce", "max commission": "commission max", "to go live": "pour être en ligne",
+  "Shop name *": "Nom de boutique *", "Tell shoppers what you make…": "Dites ce que vous créez…",
+  "Submit application →": "Envoyer ma demande →",
+  "Custom order request · free": "Demande sur mesure · gratuit", "What should makers create for you?": "Que doivent créer les créateurs ?",
+  "Post request → get quotes in ~48h": "Publier → devis sous ~48h",
+  "Makers reply with price + timeline. You pick — no obligation.": "Les créateurs répondent avec prix et délai. Vous choisissez — sans obligation.",
+  "Order tracking": "Suivi de commande", "Where’s my order?": "Où est ma commande ?",
+  "Order ref e.g. AH-XXXXXX": "Réf ex. AH-XXXXXX", "Track": "Suivre",
+  "Online · replies instantly": "En ligne · répond aussitôt", "Type a message…": "Écrivez un message…",
+  "Your shop here? Join free →": "Votre boutique ici ? Gratuit →",
+  "Signed out.": "Déconnecté.", "Saved to wishlist ♥": "Ajouté aux favoris ♥", "Removed from wishlist": "Retiré des favoris"
+});
+Object.assign(I18N.fr, {
+  "Shop all": "Boutique", "Fashion": "Mode", "Home": "Maison", "Vendors": "Vendeurs", "Our story": "Notre histoire",
+  "2,400+ sellers live": "2 400+ vendeurs en ligne", "Search makers, goods…": "Rechercher créateurs, articles…",
+  "Search the marketplace…": "Rechercher sur la place…", "Sell on Abu.Hub": "Vendre sur Abu.Hub",
+  "Home & Living": "Maison & Vie", "Our impact →": "Notre impact →",
+  "✦ New season drop": "✦ Nouvelle collection", "Verified artisans only": "Artisans vérifiés uniquement",
+  "Beautiful things,": "De belles choses,", "made by": "faites par", "real hands.": "de vraies mains.",
+  "Shop 12,000+ small-batch goods from 2,400 independent sellers — fashion, home, beauty & craft, all in one elegant market.": "12 000+ articles artisanaux de 2 400 vendeurs indépendants — mode, maison, beauté et artisanat, sur une place élégante.",
+  "Shop the marketplace": "Acheter sur le marché", "Meet the makers": "Rencontrer les créateurs",
+  "from 48,000+ happy shoppers": "de plus de 48 000 acheteurs satisfaits",
+  "Curated · 214 pieces": "Sélection · 214 pièces", "The Handmade Table": "La Table Artisanale",
+  "Shop home →": "Voir maison →", "For makers": "Pour les créateurs",
+  "Sell to 190k monthly shoppers. 0 listing fees.": "Vendez à 190k acheteurs mensuels. 0 frais d'annonce.",
+  "Open your shop": "Ouvrez votre boutique", "Glow Rituals": "Rituels Éclat", "Botanical bestsellers": "Best-sellers botaniques",
+  "Buyer protection": "Protection acheteur", "Full refund if it’s not as described": "Remboursement intégral si non conforme",
+  "Verified sellers": "Vendeurs vérifiés", "Every maker is ID & quality checked": "Chaque créateur est vérifié",
+  "Fast, tracked shipping": "Livraison rapide et suivie", "30-day returns": "Retours 30 jours",
+  "No questions, prepaid label": "Sans questions, étiquette prépayée",
+  "Browse by craft": "Parcourir par artisanat", "Shop by category": "Acheter par catégorie", "View everything →": "Tout voir →",
+  "Loved right now": "Adorés en ce moment", "Trending across the Hub": "Tendances du Hub",
+  "Explore all 12,000+ goods": "Explorer 12 000+ articles", "All": "Tous",
+  "Hot right now": "Populaire actuellement", "Frequently searched": "Recherches fréquentes", "Search everything →": "Tout rechercher →",
+  "Verified by 48,000+ reviews": "Vérifié par 48 000+ avis", "Top ranking this week": "Top de la semaine",
+  "Shop all →": "Tout acheter →", "Autumn Market Week · ends in": "Semaine du Marché · se termine dans",
+  "days": "jours", "hrs": "h", "min": "min", "sec": "sec",
+  "Up to 30% off handmade icons": "Jusqu'à -30% sur les icônes artisanales",
+  "Stack code": "Utilisez le code", "on top of sale prices.": "en plus des prix soldés.",
+  "Shop the sale →": "Voir les promos →", "Coupon centre · tap to copy": "Coupons · touchez pour copier",
+  "Steals under $50": "Pépites à moins de 50 $",
+  "Picked up where you left off": "Reprenez où vous étiez", "Recently viewed": "Vus récemment", "Clear": "Effacer",
+  "Visit their shop": "Visiter sa boutique", "Makers": "Créateurs", "Paid to sellers": "Versés aux vendeurs",
+  "5-star reviews": "Avis 5 étoiles", "Editor’s curation": "Sélection de la rédaction", "Collections to get lost in": "Collections à explorer",
+  "Independent & proud": "Indépendants et fiers", "Star sellers this week": "Vendeurs stars de la semaine",
+  "All vendors →": "Tous les vendeurs →", "Pavilions": "Pavillons", "Shop by origin": "Acheter par origine"
+});
+/* ---------- Neon dark mode ---------- */
+let theme = localStorage.getItem("abuhub_theme") || "light";
+function setTheme(t) {
+  theme = t === "dark" ? "dark" : "light";
+  localStorage.setItem("abuhub_theme", theme);
+  document.body.classList.toggle("dark", theme === "dark");
+  $("#themeIco").textContent = theme === "dark" ? "☀️" : "🌙";
+  document.querySelector("meta[name='theme-color']").setAttribute("content", theme === "dark" ? "#12100D" : "#191512");
+}
+function toggleTheme() { setTheme(theme === "dark" ? "light" : "dark"); toast(theme === "dark" ? "Neon dark mode on 🌙" : "Light mode ☀️"); }
+
+/* ---------- Liquid nav blob ---------- */
+function moveBlob(el) {
+  const nav = $("#mainNav"), blob = $("#navBlob");
+  if (!nav || !blob || !el) return;
+  nav.classList.add("blob-on");
+  const n = nav.getBoundingClientRect(), r = el.getBoundingClientRect();
+  blob.style.left = (r.left - n.left) + "px";
+  blob.style.width = r.width + "px";
+}
+document.addEventListener("click", (e) => {
+  const link = e.target.closest ? e.target.closest("#mainNav .navlink") : null;
+  if (link) moveBlob(link);
+});
+
+/* ---------- 3D auth flip ---------- */
+/* (flip runs inside setAuthMode above) */
+
+/* ---------- Interactive shape slider ---------- */
+const MOODS = [
+  { title: "Earthy Calm", sub: "Clay, oat & stoneware for slow mornings", img: "https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=800&q=80&auto=format&fit=crop", q: "bowl", glow: "#BC5A28" },
+  { title: "Golden Hour", sub: "Pearls & gold that catch the light", img: "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&q=80&auto=format&fit=crop", q: "pearl", glow: "#C8A15A" },
+  { title: "Deep Forest", sub: "Wool throws & oak for cozy nights", img: "https://images.unsplash.com/photo-1580301762395-83604735c6c0?w=800&q=80&auto=format&fit=crop", q: "throw", glow: "#2F3A2E" },
+  { title: "Bold Muse", sub: "Statement dresses & prints", img: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80&auto=format&fit=crop", q: "dress", glow: "#9A451C" },
+  { title: "Ritual Glow", sub: "Botanical oils & butters", img: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&q=80&auto=format&fit=crop", q: "oil", glow: "#606C38" }
+];
+let moodIdx = 0, moodTimer = null;
+function renderMoods() {
+  const track = $("#moodTrack"), dots = $("#moodDots");
+  if (!track || !dots) return;
+  track.innerHTML = MOODS.map((m, i) => `
+    <div class="mood-slide shrink-0 w-[78%] sm:w-[46%] lg:w-[31.5%] cursor-pointer" onclick="moodShop('${m.q}')">
+      <div class="blob-img overflow-hidden h-64 sm:h-72" style="box-shadow:0 0 0 3px ${m.glow}55, 0 0 44px ${m.glow}44">
+        <img src="${m.img}" loading="lazy" class="w-full h-full object-cover" alt="${m.title}" />
+      </div>
+      <h3 class="font-display text-2xl mt-4">${m.title}</h3>
+      <p class="text-sm text-muted">${m.sub}</p>
+      <span class="link-more text-sm">Shop the mood →</span>
+    </div>`).join("");
+  dots.innerHTML = MOODS.map((_, i) => `<span class="mood-dot ${i === 0 ? "on" : ""}" onclick="moodShow(${i})"></span>`).join("");
+  moodShow(0); moodAuto(); moodDrag();
+}
+function moodShow(i) {
+  moodIdx = (i + MOODS.length) % MOODS.length;
+  const track = $("#moodTrack"); if (!track || !track.children.length) return;
+  const slide = track.children[moodIdx];
+  track.style.transform = `translateX(${-slide.offsetLeft + 8}px)`;
+  $$("#moodDots .mood-dot").forEach((d, j) => d.classList.toggle("on", j === moodIdx));
+}
+function moodGo(d) { moodShow(moodIdx + d); moodAuto(); }
+function moodShop(q) { hotSearch(q); }
+function moodAuto() {
+  clearInterval(moodTimer);
+  moodTimer = setInterval(() => { if (!document.hidden) moodShow(moodIdx + 1); }, 4500);
+}
+function moodDrag() {
+  const track = $("#moodTrack"); if (!track || track.dataset.drag) return;
+  track.dataset.drag = "1";
+  let x0 = 0, dx = 0, on = false;
+  track.addEventListener("pointerdown", (e) => { on = true; x0 = e.clientX; track.setPointerCapture(e.pointerId); });
+  track.addEventListener("pointermove", (e) => { if (on) dx = e.clientX - x0; });
+  track.addEventListener("pointerup", () => {
+    if (!on) return; on = false;
+    if (dx < -40) moodShow(moodIdx + 1);
+    else if (dx > 40) moodShow(moodIdx - 1);
+    dx = 0; moodAuto();
+  });
+}
+
 /* ---------- Simple authentication (no setup needed) ---------- */
 const AUTH_CFG = JSON.parse(localStorage.getItem("abuhub_auth") || "null") || {
   apiKey: "", authDomain: "", projectId: "", appId: ""
@@ -208,7 +588,7 @@ function renderHome() {
     <div class="bg-white border border-line rounded-3xl p-6"><p class="text-gold tracking-tight">★★★★★</p>
     <p class="mt-3 leading-relaxed text-[15px]">“${r.t}”</p>
     <div class="flex items-center gap-3 mt-5"><img src="${r.img}" class="w-10 h-10 rounded-full object-cover" alt="" /><div><strong class="text-sm block">${r.n}</strong><span class="text-xs text-muted">Verified buyer · ${r.p}</span></div></div></div>`).join("");
-  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount(); renderCoupons(); renderRecent();
+  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount(); renderCoupons(); renderRecent(); renderMoods();
 }
 function setTrend(c){ trendCat = c; renderHome(); }
 
@@ -767,7 +1147,13 @@ function simpleLogin(e, isSignup){
   if (checkoutData) checkoutData.email = _authUser.email;
   updateAccountUI(); closeAll(); toast(`Karibu, ${_authUser.name.split(" ")[0]} ✓`);
 }
-function setAuthMode(m){ _authMode = m; renderAuth(); }
+function setAuthMode(m) {
+  const body = $("#authBody");
+  if (!body || _authMode === m || $("#authModal").classList.contains("hidden")) { _authMode = m; renderAuth(); return; }
+  _authMode = m;
+  body.classList.add("flipping");
+  setTimeout(() => { renderAuth(); requestAnimationFrame(() => requestAnimationFrame(() => { const b = $("#authBody"); if (b) b.classList.remove("flipping"); })); }, 200);
+}
 function saveAuthCfg(){ toast("No setup needed — just enter name + email.", "warn"); }
 function resetAuthCfg(){ renderAuth(); }
 function demoLogin(){ renderAuth(); }
@@ -1019,6 +1405,10 @@ document.addEventListener("click", (e) => { if (e.target.classList?.contains("mo
 /* init */
 renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
 $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
+$$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
+document.documentElement.lang = lang;
+setTheme(theme);
+observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
 $("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
