@@ -563,6 +563,7 @@ function go(view, cat) {
   if (cat) { filters.cats = [cat]; syncFilterUI(); }
   if (view === "shop") renderShop();
   if (view === "vendors") renderVendors();
+  $$("#mobileTabs .mtab").forEach(b => b.classList.toggle("on", b.dataset.tab === view || (view === "vendor" && b.dataset.tab === "shop")));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeAll(true);
 }
@@ -1127,6 +1128,9 @@ function updateBadges(){
   const cc = $("#cartCount"), wc = $("#wishCount");
   cc.textContent = n; cc.classList.toggle("hidden", !n); cc.classList.toggle("flex", !!n);
   wc.textContent = wishlist.length; wc.classList.toggle("hidden", !wishlist.length); wc.classList.toggle("flex", !!wishlist.length);
+  const mc = $("#mCartN"), mw = $("#mWishN");
+  if (mc) { mc.textContent = n; mc.classList.toggle("hidden", !n); mc.classList.toggle("flex", !!n); }
+  if (mw) { mw.textContent = wishlist.length; mw.classList.toggle("hidden", !wishlist.length); mw.classList.toggle("flex", !!wishlist.length); }
 }
 
 /* ---------- Drawers & modals ---------- */
