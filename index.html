@@ -373,6 +373,30 @@ tailwind.config = {
     </div>
   </div>
 
+  <!-- Dropshipping -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 mt-16">
+    <div class="rounded-[28px] bg-ink text-cream p-8 sm:p-12 grid lg:grid-cols-[1.1fr_1fr] gap-10 items-center overflow-hidden relative">
+      <div>
+        <p class="eyebrow !text-gold">Dropshipping centre</p>
+        <h2 class="font-display text-3xl sm:text-5xl tracking-tight">Sell handmade. Hold zero stock.</h2>
+        <p class="text-cream/70 mt-4 leading-relaxed max-w-lg">List goods from verified makers in your own shop. They pack & ship directly to your customer — unbranded on request — and you keep the margin. No warehouse, no upfront stock.</p>
+        <div class="grid sm:grid-cols-3 gap-3 mt-7">
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-4"><strong class="font-display text-xl">01 · Pick</strong><p class="text-[13px] text-cream/60 mt-1">Filter Shop → 📦 Ships from maker. 9 goods live.</p></div>
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-4"><strong class="font-display text-xl">02 · List</strong><p class="text-[13px] text-cream/60 mt-1">Re-list in your shop with your price. Maker ships.</p></div>
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-4"><strong class="font-display text-xl">03 · Earn</strong><p class="text-[13px] text-cream/60 mt-1">You keep the margin. Payouts to bank or mobile money.</p></div>
+        </div>
+        <div class="flex flex-wrap gap-3 mt-7">
+          <button onclick="filters.dropship=true;syncFilterUI();go('shop')" class="btn-cream">Browse dropship goods 📦</button>
+          <button onclick="openSeller()" class="btn-ghost-light">Become a reseller →</button>
+        </div>
+      </div>
+      <div class="relative min-h-[300px] rounded-[22px] overflow-hidden">
+        <img src="https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=900&q=80&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover" alt="Packing orders" />
+        <div class="absolute bottom-4 left-4 right-4 bg-cream/95 backdrop-blur rounded-2xl p-4 text-sm text-ink flex items-center gap-3"><span class="w-10 h-10 rounded-full bg-ink text-cream grid place-items-center shrink-0">📦</span><span><strong>4 dropship partners</strong> · 5–9 day direct delivery · buyer protection included</span></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Abu.Hub Promise (Trade-Assurance-style) -->
   <div class="max-w-7xl mx-auto px-4 sm:px-6 mt-16">
     <div class="text-center mb-8"><p class="eyebrow !justify-center">The Abu.Hub Promise</p><h2 class="h2">Every order, protected end-to-end</h2></div>
@@ -425,6 +449,9 @@ tailwind.config = {
         </div>
         <div class="mb-5"><p class="f-label">Rating</p><div id="rateFilters" class="flex gap-1.5"></div></div>
         <div class="mb-2"><p class="f-label">Vendor</p><div id="vendorFilters" class="space-y-1.5 max-h-44 overflow-auto pr-1"></div></div>
+        <div class="mt-5 pt-5 border-t border-line"><p class="f-label">Fulfilment</p>
+          <label class="flex items-center gap-2.5 text-sm cursor-pointer font-medium"><input id="dsCheck" type="checkbox" onchange="toggleDropship()" class="w-4 h-4 accent-[#0AA5C2]" /> 📦 Ships from maker (dropship)</label>
+        </div>
       </aside>
 
       <div class="w-full">
@@ -513,7 +540,7 @@ tailwind.config = {
       </div>
     </div>
     <div><h4 class="f-h">Shop</h4><ul class="f-ul"><li><button onclick="go('shop')">All goods</button></li><li><button onclick="go('shop','Fashion')">Fashion</button></li><li><button onclick="go('shop','Home & Living')">Home & Living</button></li><li><button onclick="go('shop','Beauty')">Beauty</button></li><li><button onclick="go('shop','Jewelry')">Jewelry</button></li></ul></div>
-    <div><h4 class="f-h">Sellers</h4><ul class="f-ul"><li><button onclick="openSeller()">Start selling</button></li><li><button onclick="go('vendors')">Find vendors</button></li><li><button onclick="go('about')">Seller handbook</button></li><li><button onclick="go('about')">Fees & payouts</button></li></ul></div>
+    <div><h4 class="f-h">Sellers</h4><ul class="f-ul"><li><button onclick="openSeller()">Start selling</button></li><li><button onclick="filters.dropship=true;syncFilterUI();go('shop')">📦 Dropshipping</button></li><li><button onclick="go('vendors')">Find vendors</button></li><li><button onclick="go('about')">Seller handbook</button></li><li><button onclick="go('about')">Fees & payouts</button></li></ul></div>
     <div><h4 class="f-h">Support</h4><ul class="f-ul"><li><button onclick="openTrack()">📦 Track your order</button></li><li><a href="#">Help centre</a></li><li><a href="#">Shipping & returns</a></li><li><a href="#">Buyer protection</a></li><li><a href="#">Contact: hello@abuhub.com</a></li></ul></div>
   </div>
   <div class="border-t border-white/10"><div class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row gap-2 items-center justify-between text-[13px] text-cream/50"><p>© 2026 Abu.Hub Marketplace · Crafted for makers, with care.</p><p>Visa · Mastercard · Amex · Mobile Money · PayPal</p></div></div>
@@ -579,6 +606,7 @@ tailwind.config = {
       <input id="sEmail" required type="email" placeholder="Email *" class="f-input" />
       <select id="sCat" class="f-input"><option>Fashion</option><option>Home & Living</option><option>Beauty</option><option>Jewelry</option><option>Art & Craft</option><option>Grocery</option></select>
       <textarea id="sStory" placeholder="Tell shoppers what you make…" rows="3" class="f-input"></textarea>
+      <label class="flex items-center gap-2.5 text-sm bg-cream border border-line rounded-2xl p-3.5 cursor-pointer"><input id="sDropship" type="checkbox" class="w-4 h-4 accent-[#0AA5C2]" /> <span><strong>📦 I want dropship resellers</strong><br><span class="text-muted">Let others re-sell my goods — I ship direct.</span></span></label>
       <button class="btn-ink w-full">Submit application →</button>
     </form>
   </div>
