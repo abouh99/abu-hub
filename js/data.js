@@ -41,7 +41,7 @@ const VENDORS = [
     avatar: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=200&q=80&auto=format&fit=crop",
     cover: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=1200&q=80&auto=format&fit=crop",
     rating: 4.7, reviews: 1204, products: 28, sales: "7k",
-    verified: true, joined: "2022",
+    verified: true, joined: "2022", dropship: true,
     story: "Cold-pressed baobab, moringa and shea. Vegan, cruelty-free, and poured in micro-batches."
   },
   {
@@ -52,7 +52,7 @@ const VENDORS = [
     avatar: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=200&q=80&auto=format&fit=crop",
     cover: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=1200&q=80&auto=format&fit=crop",
     rating: 5.0, reviews: 987, products: 54, sales: "6k",
-    verified: true, joined: "2021",
+    verified: true, joined: "2021", dropship: true,
     story: "Recycled 14k gold vermeil and baroque pearls. Tarnish-resistant, water-safe, made for everyday heirlooms."
   },
   {
@@ -74,7 +74,7 @@ const VENDORS = [
     avatar: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=200&q=80&auto=format&fit=crop",
     cover: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=1200&q=80&auto=format&fit=crop",
     rating: 4.9, reviews: 2760, products: 18, sales: "21k",
-    verified: true, joined: "2019",
+    verified: true, joined: "2019", dropship: true,
     story: "Direct-trade Yirgacheffe and Sidamo lots, roasted weekly in 12kg batches for peak aroma."
   },
   {
@@ -85,7 +85,7 @@ const VENDORS = [
     avatar: "https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?w=200&q=80&auto=format&fit=crop",
     cover: "https://images.unsplash.com/photo-1562564055-71e051d33c19?w=1200&q=80&auto=format&fit=crop",
     rating: 4.8, reviews: 764, products: 33, sales: "5k",
-    verified: true, joined: "2023",
+    verified: true, joined: "2023", dropship: true,
     story: "Washi paper goods, risograph prints and brass desk tools. Slow stationery for thoughtful work."
   }
 ];
