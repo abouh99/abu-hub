@@ -36,7 +36,7 @@ const stars = (r) => "★".repeat(Math.round(r)) + "☆".repeat(5 - Math.round(r
 
 let cart = JSON.parse(localStorage.getItem("abuhub_cart") || "[]"); // {id, qty, variant}
 let wishlist = JSON.parse(localStorage.getItem("abuhub_wish") || "[]");
-let filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], sort: "featured" };
+let filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, sort: "featured" };
 let trendCat = "All";
 let checkoutStep = 1, checkoutData = {};
 let followed = JSON.parse(localStorage.getItem("abuhub_follow") || "[]");
@@ -149,6 +149,7 @@ function productCard(p) {
     </div>
     <div class="p-4 sm:p-5 flex flex-col gap-1.5 flex-1">
       <button onclick="openVendor('${v.id}')" class="text-[12px] font-semibold text-[#BC5A28] uppercase tracking-wider text-left hover:underline">${v.name} ✓</button>
+      ${v.dropship ? `<span class="text-[11px] font-bold text-[#0AA5C2]">📦 SHIPS FROM MAKER</span>` : ""}
       <h3 onclick="openProduct('${p.id}')" class="font-display text-[16px] sm:text-[18px] leading-snug cursor-pointer hover:text-[#BC5A28] line-clamp-1">${p.name}</h3>
       <div class="flex items-center gap-1.5 text-[13px]"><span class="text-[#C8A15A] tracking-tight">${stars(p.rating)}</span><span class="text-muted">${p.rating} (${p.reviews})</span></div>
       ${urgencyHTML(p)}
@@ -191,7 +192,7 @@ function renderHome() {
       <div class="h-24 bg-cover bg-center" style="background-image:url('${v.cover}')"></div>
       <div class="p-5">
         <div class="flex items-center gap-3 -mt-10"><img src="${v.avatar}" class="w-14 h-14 rounded-2xl object-cover border-2 border-[#191512]" alt="" />
-        ${v.verified ? `<span class="text-[11px] font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-300/30 rounded-full px-2 py-0.5">✓ Verified</span>` : ""}</div>
+        ${v.verified ? `<span class="text-[11px] font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-300/30 rounded-full px-2 py-0.5">✓ Verified</span>` : ""}${v.dropship ? `<span class="text-[11px] font-bold bg-[#0AA5C2]/20 text-cyan-200 border border-cyan-300/30 rounded-full px-2 py-0.5">📦 Dropship</span>` : ""}</div>
         <h4 class="font-display text-xl mt-3">${v.name}</h4>
         <p class="text-sm text-white/60">${v.tagline} · ${v.location}</p>
         <p class="text-sm mt-2"><span class="text-gold">★ ${v.rating}</span> <span class="text-white/50">(${v.reviews}) · ${v.sales} sales</span></p>
@@ -290,7 +291,7 @@ function renderOrigins(){
 }
 function goOrigin(country){
   const ids = VENDORS.filter(v => countryOf(v) === country).map(v => v.id);
-  filters = { q: "", cats: [], max: 600, minRating: 0, vendors: ids, sort: "featured" };
+  filters = { q: "", cats: [], max: 600, minRating: 0, vendors: ids, dropship: false, sort: "featured" };
   syncFilterUI(); go("shop");
   toast(`Showing handmade goods from ${country} ${ (typeof ORIGIN_FLAGS !== "undefined" && ORIGIN_FLAGS[country]) || ""}`);
 }
@@ -422,6 +423,10 @@ function botReply(raw) {
     botSay(`🛍️ Opening a shop is <strong>free</strong> — $0 listing fees, 8% max commission, live in 24h. Tap <strong>Sell on Abu.Hub</strong> up top.`);
     return;
   }
+  if (/(dropship|drop ship|resell|reseller|wholesale|no stock|without stock)/.test(t)) {
+    botSay(`📦 Yes! <strong>Dropship partners</strong> ship straight to your customer — you never hold stock. Look for the <strong>📦 SHIPS FROM MAKER</strong> tag, filter it in Shop → Filters, and keep your margin. Makers handle packing in unbranded boxes.`);
+    return;
+  }
   if (/(human|agent|person|call|phone|whatsapp|help|support)/.test(t)) {
     botSay(`💬 A human is one tap away: ${wa("Hi Abu.Hub! I need help.")} We usually reply within the hour, 8am–10pm EAT.`);
     return;
@@ -463,12 +468,13 @@ function buildFilterUI() {
   $("#rateFilters").innerHTML = [0, 4.5, 4.8].map(r => `<button onclick="setFilter('minRating',${r})" class="chip !text-[12px] ${filters.minRating === r ? "active" : ""}">${r === 0 ? "Any" : "★ " + r + "+"}</button>`).join("");
   $("#vendorFilters").innerHTML = VENDORS.map(v => `<label class="flex items-center gap-2.5 text-sm cursor-pointer"><input type="checkbox" ${filters.vendors.includes(v.id) ? "checked" : ""} onchange="toggleVendorF('${v.id}')" class="w-4 h-4 accent-[#BC5A28]" /> <span class="line-clamp-1">${v.name}</span></label>`).join("");
 }
-function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = money(filters.max); $("#sortSel").value = filters.sort; }
+function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = money(filters.max); $("#sortSel").value = filters.sort; const ds = $("#dsCheck"); if (ds) ds.checked = !!filters.dropship; }
 function toggleCat(c){ filters.cats.includes(c) ? filters.cats = filters.cats.filter(x => x !== c) : filters.cats.push(c); syncFilterUI(); renderShop(); }
 function toggleVendorF(id){ filters.vendors.includes(id) ? filters.vendors = filters.vendors.filter(x => x !== id) : filters.vendors.push(id); syncFilterUI(); renderShop(); }
 function setFilter(k, v){ if (k === "max") $("#priceVal").textContent = money(Number(v)); filters[k] = (k === "max" || k === "minRating") ? Number(v) : v; syncFilterUI(); renderShop(); }
-function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
+function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
 function toggleFilters(){ $("#filterPanel").classList.toggle("hidden"); }
+function toggleDropship(){ filters.dropship = !filters.dropship; syncFilterUI(); renderShop(); toast(filters.dropship ? "Showing ships-from-maker goods only 📦" : "Showing all goods"); }
 function onHeaderSearch(v){ filters.q = v; if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
 
 function filteredProducts() {
@@ -477,6 +483,7 @@ function filteredProducts() {
   if (filters.cats.length) list = list.filter(p => filters.cats.includes(p.category));
   list = list.filter(p => p.price <= filters.max && p.rating >= filters.minRating);
   if (filters.vendors.length) list = list.filter(p => filters.vendors.includes(p.vendorId));
+  if (filters.dropship) list = list.filter(p => vendorById(p.vendorId).dropship);
   if (filters.sort === "low") list.sort((a, b) => a.price - b.price);
   if (filters.sort === "high") list.sort((a, b) => b.price - a.price);
   if (filters.sort === "rating") list.sort((a, b) => b.rating - a.rating);
@@ -486,7 +493,7 @@ function renderShop() {
   buildFilterUI();
   const list = filteredProducts();
   $("#shopCount").textContent = `· ${list.length} goods`;
-  $("#activeCats").innerHTML = filters.cats.map(c => `<span class="chipf">${c} <button onclick="toggleCat('${c}')">✕</button></span>`).join("") + (filters.q ? `<span class="chipf">“${filters.q}” <button onclick="setFilter('q','');document.querySelector('#headerSearch').value=''">✕</button></span>` : "");
+  $("#activeCats").innerHTML = filters.cats.map(c => `<span class="chipf">${c} <button onclick="toggleCat('${c}')">✕</button></span>`).join("") + (filters.dropship ? `<span class="chipf">📦 Ships from maker <button onclick="toggleDropship()">✕</button></span>` : "") + (filters.q ? `<span class="chipf">“${filters.q}” <button onclick="setFilter('q','');document.querySelector('#headerSearch').value=''">✕</button></span>` : "");
   $("#shopGrid").innerHTML = list.map(productCard).join("");
   $("#shopEmpty").classList.toggle("hidden", list.length > 0);
 }
@@ -502,7 +509,7 @@ function renderVendors(q = "") {
       <div class="h-28 bg-cover bg-center cursor-pointer" style="background-image:url('${v.cover}')" onclick="openVendor('${v.id}')"></div>
       <div class="p-5">
         <div class="flex items-center gap-3 -mt-11"><img src="${v.avatar}" class="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow" alt="" />
-        <span class="mt-8 text-[11px] font-bold ${v.verified ? "text-emerald-600" : "text-muted"}">${v.verified ? "✓ Verified seller" : ""}</span></div>
+        <span class="mt-8 text-[11px] font-bold ${v.verified ? "text-emerald-600" : "text-muted"}">${v.verified ? "✓ Verified seller" : ""}</span>${v.dropship ? `<span class="mt-8 text-[11px] font-bold text-[#0AA5C2]">📦 Dropship partner</span>` : ""}</div>
         <h4 class="font-display text-xl mt-2 cursor-pointer hover:text-[#BC5A28]" onclick="openVendor('${v.id}')">${v.name}</h4>
         <p class="text-sm text-muted">${v.tagline} · ${v.location}</p>
         <p class="text-sm mt-1.5"><span class="text-[#C8A15A]">★ ${v.rating}</span> <span class="text-muted">(${v.reviews}) · ${v.products} products</span></p>
@@ -529,7 +536,7 @@ function openVendor(id){
       <div class="p-6 sm:p-8 flex flex-col sm:flex-row gap-5 sm:items-center">
         <img src="${v.avatar}" class="w-20 h-20 rounded-3xl object-cover -mt-14 border-4 border-white shadow" alt="" />
         <div class="flex-1">
-          <div class="flex flex-wrap items-center gap-2"><h2 class="font-display text-3xl">${v.name}</h2>${v.verified ? `<span class="text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1">✓ VERIFIED SELLER</span>` : ""}</div>
+          <div class="flex flex-wrap items-center gap-2"><h2 class="font-display text-3xl">${v.name}</h2>${v.verified ? `<span class="text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1">✓ VERIFIED SELLER</span>` : ""}${v.dropship ? `<span class="text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-full px-2.5 py-1">📦 DROPSHIP PARTNER</span>` : ""}</div>
           <p class="text-muted text-sm mt-1">${v.tagline} · ${v.location} · On Abu.Hub since ${v.joined}</p>
           <p class="mt-3 max-w-2xl text-[15px] leading-relaxed">${v.story}</p>
           <p class="text-sm mt-3"><span class="text-[#C8A15A] font-semibold">★ ${v.rating}</span> <span class="text-muted">${v.reviews} reviews · ${v.sales} sales · ${prods.length} goods live</span></p>
@@ -571,6 +578,7 @@ function openProduct(id){
         <p class="text-[15px] text-muted leading-relaxed mt-4">${p.desc}</p>
         ${urgencyHTML(p)}
         <p class="text-[13px] mt-1.5">🚚 Order today, get it by <strong>${deliveryDate()}</strong> · <span class="text-muted">Free over ${money(75)}</span></p>
+        ${v.dropship ? `<p class="text-[13px] mt-1.5 bg-[#0AA5C2]/10 border border-[#0AA5C2]/30 rounded-xl px-3 py-2">📦 <strong>Dropship:</strong> ships directly from ${v.name} (${v.location}) in 5–9 days. Unbranded packaging on request.</p>` : `<p class="text-[12px] text-muted mt-1">Ships from Abu.Hub hub in 3–6 days, tracked.</p>`}
         <p class="f-label mt-5">Finish / Variant</p>
         <div class="flex flex-wrap gap-2" id="variantRow">${p.colors.map((c, i) => `<button onclick="pickVariant('${c}',this)" class="chip ${i === 0 ? "active" : ""}">${c}</button>`).join("")}</div>
         <div class="flex items-center gap-3 mt-6">
@@ -776,7 +784,16 @@ async function logout(){
   API_TOKEN = ""; localStorage.removeItem("abuhub_token");
   updateAccountUI(); renderAuth(); toast("Signed out.");
 }
-function submitSeller(e){ e.preventDefault(); const name = $("#sName").value; closeAll(); toast(`Application received for “${name}”! We’ll review within 24h ✦`); e.target.reset(); }
+function submitSeller(e){
+  e.preventDefault();
+  const payload = { shop: $("#sName").value, owner: $("#sOwner").value, email: $("#sEmail").value, category: $("#sCat").value, story: $("#sStory").value, dropship: $("#sDropship")?.checked || false };
+  if (API_BASE) api("/api/sellers", { method: "POST", body: JSON.stringify(payload) }).catch(() => null);
+  const apps = JSON.parse(localStorage.getItem("abuhub_sellers") || "[]");
+  apps.unshift({ ...payload, date: new Date().toISOString() });
+  localStorage.setItem("abuhub_sellers", JSON.stringify(apps));
+  closeAll(); e.target.reset();
+  toast(payload.dropship ? `“${payload.shop}” received + dropship enabled 📦 We'll review in 24h.` : `Application received for “${payload.shop}”! We'll review within 24h ✦`);
+}
 function subscribe(e){ e.preventDefault(); const em = $("#nlEmail").value; $("#nlEmail").value = ""; toast(`Welcome to The Sunday Shelf! 10% code sent to ${em} ✓`); }
 function toggleSearchMobile(){ $("#mobileSearch").classList.toggle("hidden"); }
 
