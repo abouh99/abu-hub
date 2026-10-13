@@ -1,7 +1,35 @@
 /* Abu.Hub — app logic */
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-const money = (n) => "$" + Number(n).toFixed(2);
+/* ---------- Currency (USD base, multi-currency display) ---------- */
+const CURRENCIES = { USD: { rate: 1, sym: "$", dec: 2 }, TZS: { rate: 2500, sym: "TSh ", dec: 0 } };
+let currency = localStorage.getItem("abuhub_cur") || "USD";
+if (!CURRENCIES[currency]) currency = "USD";
+function money(n) {
+  const c = CURRENCIES[currency];
+  const v = Number(n) * c.rate;
+  return c.sym + (c.dec ? v.toFixed(c.dec).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : Math.round(v).toLocaleString("en-US"));
+}
+function setCurrency(cur) {
+  if (!CURRENCIES[cur]) return;
+  currency = cur; localStorage.setItem("abuhub_cur", cur);
+  $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = cur);
+  updateShipTexts(); refreshDynamic();
+  toast(`Prices now in ${cur === "TZS" ? "Tanzanian Shillings" : "US Dollars"} ${CURRENCIES[cur].sym.trim()}`);
+}
+function updateShipTexts() {
+  $$(".shipThreshTxt").forEach(e => e.textContent = `Free shipping over ${money(75)}`);
+  $$(".shipThreshTxt2").forEach(e => e.textContent = `Free over ${money(75)} · 3–6 days avg.`);
+}
+/* ---------- Coupons (coupon centre) ---------- */
+const COUPONS = {
+  ABUHUB10: { pct: 10, min: 0, label: "10% off everything" },
+  MAKER15: { pct: 15, min: 100, label: "15% off orders over $100" },
+  KARIBU5: { pct: 5, min: 0, label: "5% off, karibu!" }
+};
+function couponFor(code) { return COUPONS[String(code || "").trim().toUpperCase()]; }
+/* ---------- WhatsApp support ---------- */
+const SUPPORT_WA = "255700000000"; // ← replace with the shop's real WhatsApp number
 const vendorById = (id) => VENDORS.find(v => v.id === id);
 const productById = (id) => PRODUCTS.find(p => p.id === id);
 const stars = (r) => "★".repeat(Math.round(r)) + "☆".repeat(5 - Math.round(r));
@@ -63,6 +91,19 @@ function updateAccountUI(){
   if (ic) ic.innerHTML = `<span class="w-6 h-6 rounded-full bg-ink text-cream grid place-items-center text-xs font-bold">${(_authUser.name || "A")[0].toUpperCase()}</span>`;
 }
 
+/* ---------- Stock urgency + social proof (deterministic per product) ---------- */
+function hashN(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 997; return h; }
+function stockFor(p) { return 2 + (hashN(p.id + "stock") % 8); }          // 2–9 left
+function soldFor(p) { return 120 + (hashN(p.id + "sold") % 1800); }        // 120–1919 sold
+function urgencyHTML(p, light) {
+  const s = stockFor(p);
+  if (s > 5) return `<p class="text-[12px] ${light ? "text-emerald-300" : "text-emerald-600"} font-semibold mt-1">✓ In stock · ${soldFor(p).toLocaleString()}+ sold</p>`;
+  return `<p class="text-[12px] ${light ? "text-amber-300" : "text-[#BC5A28]"} font-bold mt-1">🔥 Only ${s} left · ${soldFor(p).toLocaleString()}+ sold</p>`;
+}
+function deliveryDate() {
+  const d = new Date(Date.now() + 5 * 864e5);
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
 const save = () => {
   localStorage.setItem("abuhub_cart", JSON.stringify(cart));
   localStorage.setItem("abuhub_wish", JSON.stringify(wishlist));
@@ -110,6 +151,7 @@ function productCard(p) {
       <button onclick="openVendor('${v.id}')" class="text-[12px] font-semibold text-[#BC5A28] uppercase tracking-wider text-left hover:underline">${v.name} ✓</button>
       <h3 onclick="openProduct('${p.id}')" class="font-display text-[16px] sm:text-[18px] leading-snug cursor-pointer hover:text-[#BC5A28] line-clamp-1">${p.name}</h3>
       <div class="flex items-center gap-1.5 text-[13px]"><span class="text-[#C8A15A] tracking-tight">${stars(p.rating)}</span><span class="text-muted">${p.rating} (${p.reviews})</span></div>
+      ${urgencyHTML(p)}
       <div class="flex items-center gap-2 mt-auto pt-1">
         <strong class="text-[16px] sm:text-lg">${money(p.price)}</strong>
         ${p.oldPrice ? `<s class="text-muted text-sm">${money(p.oldPrice)}</s>` : ""}
@@ -165,7 +207,7 @@ function renderHome() {
     <div class="bg-white border border-line rounded-3xl p-6"><p class="text-gold tracking-tight">★★★★★</p>
     <p class="mt-3 leading-relaxed text-[15px]">“${r.t}”</p>
     <div class="flex items-center gap-3 mt-5"><img src="${r.img}" class="w-10 h-10 rounded-full object-cover" alt="" /><div><strong class="text-sm block">${r.n}</strong><span class="text-xs text-muted">Verified buyer · ${r.p}</span></div></div></div>`).join("");
-  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount();
+  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount(); renderCoupons(); renderRecent();
 }
 function setTrend(c){ trendCat = c; renderHome(); }
 
@@ -253,6 +295,64 @@ function goOrigin(country){
   toast(`Showing handmade goods from ${country} ${ (typeof ORIGIN_FLAGS !== "undefined" && ORIGIN_FLAGS[country]) || ""}`);
 }
 
+/* ----- Recently viewed (Amazon-style) ----- */
+function pushRecent(id) {
+  let r = JSON.parse(localStorage.getItem("abuhub_recent") || "[]").filter(x => x !== id);
+  r.unshift(id); r = r.slice(0, 10);
+  localStorage.setItem("abuhub_recent", JSON.stringify(r));
+}
+function clearRecent() { localStorage.setItem("abuhub_recent", "[]"); renderRecent(); }
+function renderRecent() {
+  const w = $("#recentWrap"), row = $("#recentRow"); if (!w || !row) return;
+  const ids = JSON.parse(localStorage.getItem("abuhub_recent") || "[]").map(productById).filter(Boolean);
+  w.classList.toggle("hidden", !ids.length);
+  row.innerHTML = ids.map(p => `
+    <div class="rank-card" onclick="openProduct('${p.id}')">
+      <img loading="lazy" src="${p.img}" alt="${p.name}" />
+      <div class="p-3"><p class="text-[13px] font-semibold line-clamp-1">${p.name}</p><strong class="text-sm">${money(p.price)}</strong></div>
+    </div>`).join("");
+}
+
+/* ----- Coupon centre (SHEIN-style) ----- */
+function renderCoupons() {
+  const el = $("#couponRow"); if (!el) return;
+  el.innerHTML = Object.keys(COUPONS).map(code => `
+    <button onclick="copyCoupon('${code}')" class="flex items-center gap-2 bg-white/10 border border-dashed border-gold/70 rounded-xl px-3.5 py-2 text-sm hover:bg-white/20 transition">
+      <span class="font-bold text-gold">−${COUPONS[code].pct}%</span><span class="font-mono font-bold">${code}</span><span class="opacity-60 text-xs">tap to copy</span>
+    </button>`).join("");
+}
+function copyCoupon(code) {
+  navigator.clipboard?.writeText(code);
+  checkoutData.promo = code;
+  toast(`Code ${code} copied — ${COUPONS[code].label} ✓ (applied at checkout)`);
+}
+function couponDiscount(sub) {
+  const c = couponFor(checkoutData.promo);
+  if (!c || sub < c.min) return 0;
+  return sub * (c.pct / 100);
+}
+
+/* ----- Order tracking (Jumia-style) ----- */
+function openTrack() { showModal("trackModal"); $("#trackOut").innerHTML = ""; }
+function trackOrder() {
+  const ref = ($("#trackIn").value || "").trim().toUpperCase();
+  const out = $("#trackOut");
+  if (!ref) { out.innerHTML = `<p class="text-sm text-muted">Enter your order reference first.</p>`; return; }
+  const o = JSON.parse(localStorage.getItem("abuhub_orders") || "[]").find(x => x.ref.toUpperCase() === ref);
+  if (!o) { out.innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm">No order <strong>${ref}</strong> on this device. Orders live where they were placed — ${API_BASE ? "also checking cloud…" : "try the same browser you ordered with."}</div>`; return; }
+  const ageH = (Date.now() - new Date(o.date || Date.now()).getTime()) / 36e5;
+  const stage = ageH < 2 ? 1 : ageH < 24 ? 2 : ageH < 72 ? 3 : 4;
+  const steps = ["Placed", "Packed", "Shipped", "Delivered"];
+  out.innerHTML = `
+    <div class="bg-white border border-line rounded-2xl p-4">
+      <p class="text-sm"><strong>${o.ref}</strong> · ${money(o.total)} · ${o.method || ""}</p>
+      <div class="flex items-center mt-3">${steps.map((s, i) => `
+        <div class="flex-1 text-center"><div class="w-7 h-7 mx-auto rounded-full grid place-items-center text-xs font-bold ${i < stage ? "bg-emerald-500 text-white" : "bg-line text-muted"}">${i < stage ? "✓" : i + 1}</div>
+        <p class="text-[11px] mt-1 ${i < stage ? "font-bold" : "text-muted"}">${s}</p></div>${i < 3 ? `<div class="flex-1 h-0.5 -mt-6 ${i < stage - 1 ? "bg-emerald-500" : "bg-line"}"></div>` : ""}`).join("")}</div>
+      <p class="text-xs text-muted mt-3">Makers ship in 1–2 days · tracked 3–6 day delivery · need help? <a class="underline font-semibold" target="_blank" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! Order " + o.ref)}">WhatsApp us</a></p>
+    </div>`;
+}
+
 /* ----- Alibaba-style: RFQ custom orders ----- */
 function openRFQ(){ showModal("rfqModal"); }
 function submitRFQ(e){
@@ -279,10 +379,10 @@ function buildFilterUI() {
   $("#rateFilters").innerHTML = [0, 4.5, 4.8].map(r => `<button onclick="setFilter('minRating',${r})" class="chip !text-[12px] ${filters.minRating === r ? "active" : ""}">${r === 0 ? "Any" : "★ " + r + "+"}</button>`).join("");
   $("#vendorFilters").innerHTML = VENDORS.map(v => `<label class="flex items-center gap-2.5 text-sm cursor-pointer"><input type="checkbox" ${filters.vendors.includes(v.id) ? "checked" : ""} onchange="toggleVendorF('${v.id}')" class="w-4 h-4 accent-[#BC5A28]" /> <span class="line-clamp-1">${v.name}</span></label>`).join("");
 }
-function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = "$" + filters.max; $("#sortSel").value = filters.sort; }
+function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = money(filters.max); $("#sortSel").value = filters.sort; }
 function toggleCat(c){ filters.cats.includes(c) ? filters.cats = filters.cats.filter(x => x !== c) : filters.cats.push(c); syncFilterUI(); renderShop(); }
 function toggleVendorF(id){ filters.vendors.includes(id) ? filters.vendors = filters.vendors.filter(x => x !== id) : filters.vendors.push(id); syncFilterUI(); renderShop(); }
-function setFilter(k, v){ if (k === "max") $("#priceVal").textContent = "$" + v; filters[k] = (k === "max" || k === "minRating") ? Number(v) : v; syncFilterUI(); renderShop(); }
+function setFilter(k, v){ if (k === "max") $("#priceVal").textContent = money(Number(v)); filters[k] = (k === "max" || k === "minRating") ? Number(v) : v; syncFilterUI(); renderShop(); }
 function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
 function toggleFilters(){ $("#filterPanel").classList.toggle("hidden"); }
 function onHeaderSearch(v){ filters.q = v; if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
@@ -365,9 +465,11 @@ function openVendor(id){
 let modalQty = 1, modalVariant = null;
 function openProduct(id){
   const p = productById(id); if (!p) return;
+  pushRecent(id);
   const v = vendorById(p.vendorId);
   modalQty = 1; modalVariant = p.colors[0];
   const wished = wishlist.includes(p.id);
+  const related = PRODUCTS.filter(x => x.id !== p.id && (x.category === p.category || x.vendorId === p.vendorId)).slice(0, 4);
   $("#productCard").innerHTML = `
     <div class="grid md:grid-cols-2">
       <div class="relative bg-[#F3ECE1] min-h-[320px] md:min-h-[540px]">
@@ -383,6 +485,8 @@ function openProduct(id){
         <div class="flex items-center gap-2 mt-2 text-sm"><span class="text-[#C8A15A]">${stars(p.rating)}</span><span class="font-semibold">${p.rating}</span><span class="text-muted">· ${p.reviews} reviews · ${p.category}</span></div>
         <div class="flex items-baseline gap-3 mt-4"><strong class="font-display text-3xl">${money(p.price)}</strong>${p.oldPrice ? `<s class="text-muted">${money(p.oldPrice)}</s><span class="text-xs font-bold bg-[#BC5A28] text-white rounded-full px-2 py-1">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : ""}</div>
         <p class="text-[15px] text-muted leading-relaxed mt-4">${p.desc}</p>
+        ${urgencyHTML(p)}
+        <p class="text-[13px] mt-1.5">🚚 Order today, get it by <strong>${deliveryDate()}</strong> · <span class="text-muted">Free over ${money(75)}</span></p>
         <p class="f-label mt-5">Finish / Variant</p>
         <div class="flex flex-wrap gap-2" id="variantRow">${p.colors.map((c, i) => `<button onclick="pickVariant('${c}',this)" class="chip ${i === 0 ? "active" : ""}">${c}</button>`).join("")}</div>
         <div class="flex items-center gap-3 mt-6">
@@ -400,6 +504,12 @@ function openProduct(id){
           <div class="bg-white border border-line rounded-2xl p-3">🛡<br><strong>Buyer cover</strong><br><span class="text-muted">Full refund</span></div>
         </div>
         <button onclick="addToCart('${p.id}',true);closeModals();openCheckout()" class="w-full mt-3 bg-[#BC5A28] text-white font-bold rounded-full py-4 hover:bg-[#9A451C] transition">Buy it now →</button>
+        ${related.length ? `<p class="f-label mt-6">Pairs well with</p>
+        <div class="grid grid-cols-2 gap-2.5">${related.map(r => `
+          <div class="bg-white border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-ink transition" onclick="openProduct('${r.id}')">
+            <img src="${r.img}" class="w-full h-24 object-cover" alt="${r.name}" />
+            <div class="p-2.5"><p class="text-[12px] font-semibold line-clamp-1">${r.name}</p><strong class="text-[13px]">${money(r.price)}</strong></div>
+          </div>`).join("")}</div>` : ""}
       </div>
     </div>`;
   showModal("productModal");
@@ -491,7 +601,7 @@ function openCart(){ closeDrawers(true); renderCartItems(); $("#cartDrawer").cla
 function openWishlist(){ closeDrawers(true); renderWishItems(); $("#wishDrawer").classList.add("open"); showOverlay(); }
 function closeDrawers(silent){ $$(".drawer").forEach(d => d.classList.remove("open")); if (!silent) hideOverlay(); }
 function showModal(id){ closeModals(true); $("#" + id).classList.remove("hidden"); showOverlay(); document.body.style.overflow = "hidden"; }
-function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
+function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function closeAll(silent){ closeDrawers(true); closeModals(true); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function openAuth(){ showModal("authModal"); renderAuth(); }
 function openSeller(){ showModal("sellerModal"); }
@@ -592,8 +702,9 @@ function openCheckout(){
   closeDrawers(true); checkoutStep = 1; renderCheckout(); showModal("checkoutModal");
 }
 function renderCheckout(){
-  const sub = cartSubtotal(), ship = sub >= 75 ? 0 : 6.95, discount = checkoutData.promo === "ABUHUB10" ? sub * 0.1 : 0;
+  const sub = cartSubtotal(), ship = sub >= 75 ? 0 : 6.95, discount = couponDiscount(sub);
   const total = Math.max(0, sub + ship - discount);
+  const coupon = couponFor(checkoutData.promo);
   const steps = ["Details", "Shipping", "Payment"].map((s, i) => `<div class="flex items-center gap-2 text-[13px] font-semibold ${checkoutStep > i + 1 ? "text-emerald-600" : checkoutStep === i + 1 ? "text-ink" : "text-muted"}"><span class="w-6 h-6 rounded-full grid place-items-center text-xs ${checkoutStep > i + 1 ? "bg-emerald-500 text-white" : checkoutStep === i + 1 ? "bg-ink text-cream" : "bg-line"}">${checkoutStep > i + 1 ? "✓" : i + 1}</span>${s}</div>`).join(`<span class="flex-1 h-px bg-line mx-1"></span>`);
   let body = "";
   if (checkoutStep === 1) body = `
@@ -650,10 +761,11 @@ function renderCheckout(){
       `}
     </div>
     <div class="flex gap-2 mt-3">
-      <input id="promoIn" value="${checkoutData.promo || ""}" placeholder="Promo code (try ABUHUB10)" class="f-input" />
+      <input id="promoIn" value="${checkoutData.promo || ""}" placeholder="Coupon code (try MAKER15)" class="f-input" />
       <button onclick="applyPromo()" class="btn-line whitespace-nowrap">Apply</button>
     </div>
     <div class="flex gap-2 mt-3"><button onclick="checkoutStep=2;renderCheckout()" class="btn-line flex-1">← Back</button>${payReady() ? `<button onclick="openPaySettings()" class="btn-line">⚙️ Keys</button>` : ""}</div>
+    <button onclick="pendingOrder(${total},'Cash / M-Pesa on delivery')" class="w-full mt-2 bg-white border border-line rounded-full py-3.5 text-sm font-bold hover:border-ink transition">💵 Cash / M-Pesa on delivery →</button>
     <p class="text-xs text-muted text-center mt-3">🔒 Paid on provider-hosted pages (PCI compliant) · Abu.Hub never sees card numbers · Confirm each payment in your dashboard before shipping</p>`;
   }
   $("#checkoutCard").innerHTML = `
@@ -668,7 +780,7 @@ function renderCheckout(){
           <div class="border-t border-line mt-3 pt-3 space-y-1 text-[13px]">
             <div class="flex justify-between"><span class="text-muted">Subtotal</span><strong>${money(sub)}</strong></div>
             <div class="flex justify-between"><span class="text-muted">Shipping</span><strong>${ship === 0 ? "FREE" : money(ship)}</strong></div>
-            ${discount ? `<div class="flex justify-between text-emerald-600"><span>Promo −10%</span><strong>−${money(discount)}</strong></div>` : ""}
+            ${discount ? `<div class="flex justify-between text-emerald-600"><span>Coupon ${checkoutData.promo} −${coupon.pct}%</span><strong>−${money(discount)}</strong></div>` : ""}
             <div class="flex justify-between text-base pt-1"><span class="font-semibold">Total</span><strong class="font-display text-xl">${money(total)}</strong></div>
           </div>
         </div>
@@ -687,7 +799,14 @@ function coNext(step){
   }
   checkoutStep = step + 1; renderCheckout();
 }
-function applyPromo(){ const v = $("#promoIn").value.trim().toUpperCase(); checkoutData.promo = v; renderCheckout(); toast(v === "ABUHUB10" ? "Promo applied — 10% off ✓" : `Code “${v}” not recognised`, v === "ABUHUB10" ? "ok" : "warn"); }
+function applyPromo(){
+  const v = $("#promoIn").value.trim().toUpperCase();
+  const c = couponFor(v);
+  checkoutData.promo = v; renderCheckout();
+  if (!c) { toast(`Code “${v}” not recognised`, "warn"); return; }
+  const sub = cartSubtotal();
+  toast(sub < c.min ? `Needs ${money(c.min)}+ — add a little more ✦` : `Coupon applied — ${c.pct}% off ✓`, sub < c.min ? "warn" : "ok");
+}
 /* ----- Real payments: inline popups (public key only) ----- */
 function orderRef(){ return "AH-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 90 + 10); }
 function savePaymentSettings(){
@@ -770,6 +889,8 @@ window.addEventListener("scroll", () => $("#siteHeader").classList.toggle("scrol
 document.addEventListener("click", (e) => { if (e.target.classList?.contains("modal")) closeAll(); });
 
 /* init */
-renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI();
+renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
+$$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
+$("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
