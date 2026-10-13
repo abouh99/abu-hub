@@ -1,21 +1,84 @@
 /* Abu.Hub — app logic */
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-/* ---------- Currency (USD base, multi-currency display) ---------- */
-const CURRENCIES = { USD: { rate: 1, sym: "$", dec: 2 }, TZS: { rate: 2500, sym: "TSh ", dec: 0 } };
+/* ---------- World currencies (code, symbol, units per 1 USD fallback) ----------
+   Live rates refresh daily from a free FX feed when online; static values below are fallback. */
+const CURR_LIST = [
+["USD","$",1],["TZS","TSh ",2500],["KES","KSh ",129],["UGX","USh ",3700],["RWF","RWF ",1300],
+["NGN","₦ ",1550],["GHS","GH₵ ",15],["ZAR","R ",18],["EGP","E£ ",50],["MAD","DH ",10],
+["ETB","Br ",125],["XOF","CFA ",605],["XAF","FCFA ",605],["ZMW","ZK ",27],["MWK","MWK ",1700],
+["MZN","MT ",64],["AOA","Kz ",910],["CDF","CDF ",2850],["BIF","BIF ",3000],["DJF","DJF ",178],
+["SDG","SDG ",600],["SSP","SSP ",4500],["SOS","SOS ",570],["LYD","LD ",4.8],["TND","DT ",3.1],
+["DZD","DA ",134],["GMD","D ",70],["SLL","SLL ",23],["LRD","LRD ",195],["GNF","GNF ",8700],
+["CVE","CVE ",100],["STN","STN ",24],["KMF","KMF ",450],["MUR","₨ ",46],["SCR","SCR ",14],
+["LSL","LSL ",18],["NAD","N$ ",18],["SZL","SZL ",18],["BWP","P ",13.7],["ZWG","ZiG ",26],
+["MGA","Ar ",4600],["MRU","UM ",40],["ERN","ERN ",15],["EUR","€ ",0.92],["GBP","£ ",0.79],
+["CHF","CHF ",0.89],["SEK","kr ",11],["NOK","kr ",11],["DKK","kr ",6.9],["ISK","kr ",138],
+["PLN","zł ",4.0],["CZK","Kč ",23],["HUF","Ft ",390],["RON","lei ",4.6],["BGN","лв ",1.8],
+["RSD","RSD ",108],["BAM","KM ",1.8],["MKD","MKD ",57],["ALL","L ",92],["MDL","MDL ",18],
+["UAH","₴ ",41],["BYN","BYN ",3.3],["RUB","₽ ",100],["GEL","₾ ",2.7],["AMD","֏ ",390],
+["AZN","₼ ",1.7],["TRY","₺ ",34],["CAD","CA$ ",1.4],["MXN","MX$ ",20],["BRL","R$ ",5.8],
+["ARS","AR$ ",1000],["CLP","CL$ ",980],["COP","CO$ ",4400],["PEN","S/ ",3.75],["UYU","$U ",43],
+["PYG","₲ ",7800],["BOB","Bs ",6.9],["VES","VES ",50],["DOP","RD$ ",60],["GTQ","Q ",7.7],
+["HNL","L ",25],["NIO","C$ ",36.6],["CRC","₡ ",520],["PAB","B/. ",1],["JMD","J$ ",157],
+["CUP","CUP ",24],["HTG","HTG ",130],["BSD","B$ ",1],["BBD","BBD ",2],["BZD","BZ$ ",2],
+["XCD","EC$ ",2.7],["AWG","AWG ",1.8],["ANG","ANG ",1.8],["TTD","TT$ ",6.8],["GYD","GY$ ",208],
+["SRD","SRD ",35],["KYD","CI$ ",0.83],["BMD","BD$ ",1],["FKP","FK£ ",0.79],["GIP","£ ",0.79],
+["CNY","¥ ",7.25],["JPY","¥ ",155],["KRW","₩ ",1380],["TWD","NT$ ",32],["HKD","HK$ ",7.8],
+["MOP","MOP ",8.06],["MNT","₮ ",3400],["KZT","₸ ",500],["UZS","UZS ",12800],["KGS","с ",87],
+["TJS","SM ",10.9],["TMT","TMT ",3.5],["AFN","؋ ",70],["PKR","₨ ",278],["INR","₹ ",84],
+["NPR","₨ ",134],["BTN","BTN ",84],["BDT","৳ ",120],["LKR","₨ ",295],["MVR","MVR ",15.4],
+["MMK","MMK ",2100],["THB","฿ ",34],["LAK","₭ ",22000],["VND","₫ ",25400],["KHR","៛ ",4100],
+["MYR","RM ",4.5],["SGD","S$ ",1.35],["BND","B$ ",1.35],["IDR","Rp ",15800],["PHP","₱ ",58],
+["ILS","₪ ",3.7],["JOD","JOD ",0.71],["LBP","LBP ",89500],["SYP","SYP ",11000],["IQD","IQD ",1310],
+["IRR","IRR ",42000],["SAR","﷼ ",3.75],["AED","AED ",3.67],["QAR","QR ",3.64],["KWD","KWD ",0.31],
+["BHD","BHD ",0.38],["OMR","OMR ",0.38],["YER","YER ",240],["AUD","A$ ",1.53],["NZD","NZ$ ",1.7],
+["PGK","K ",4],["FJD","FJ$ ",2.3],["WST","WS$ ",2.8],["TOP","T$ ",2.4],["SBD","SI$ ",8.4],
+["VUV","VT ",120],["XPF","₣ ",110]
+];
+const CURRENCIES = {};
+CURR_LIST.forEach(([c, s, r]) => CURRENCIES[c] = { rate: r, sym: s });
 let currency = localStorage.getItem("abuhub_cur") || "USD";
 if (!CURRENCIES[currency]) currency = "USD";
+function liveRate() {
+  try {
+    const c = JSON.parse(localStorage.getItem("abuhub_rates") || "null");
+    if (c && c.rates && c.rates[currency] && CURRENCIES[currency]) return c.rates[currency];
+  } catch {}
+  return CURRENCIES[currency].rate;
+}
 function money(n) {
-  const c = CURRENCIES[currency];
-  const v = Number(n) * c.rate;
-  return c.sym + (c.dec ? v.toFixed(c.dec).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : Math.round(v).toLocaleString("en-US"));
+  const v = Number(n) * liveRate();
+  const s = CURRENCIES[currency].sym;
+  if (liveRate() >= 100) return s + Math.round(v).toLocaleString("en-US");
+  return s + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+async function refreshRates() {
+  try {
+    const c = JSON.parse(localStorage.getItem("abuhub_rates") || "null");
+    if (c && Date.now() - c.ts < 24 * 36e5) return;
+    const r = await fetch("https://open.er-api.com/v6/latest/USD");
+    const j = await r.json();
+    if (j && j.result === "success" && j.rates) {
+      localStorage.setItem("abuhub_rates", JSON.stringify({ ts: Date.now(), rates: j.rates }));
+      refreshDynamic(); updateShipTexts();
+    }
+  } catch {}
+}
+function buildCurrSelectors() {
+  const opts = Object.keys(CURRENCIES).sort().map(c => {
+    const s = CURRENCIES[c].sym.trim();
+    const label = (s && s !== c) ? s + " " + c : c;
+    return `<option value="${c}">${label}</option>`;
+  }).join("");
+  $$("select[onchange^='setCurrency']").forEach(s => { s.innerHTML = opts; s.value = currency; });
 }
 function setCurrency(cur) {
   if (!CURRENCIES[cur]) return;
   currency = cur; localStorage.setItem("abuhub_cur", cur);
   $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = cur);
   updateShipTexts(); refreshDynamic();
-  toast(`Prices now in ${cur === "TZS" ? "Tanzanian Shillings" : "US Dollars"} ${CURRENCIES[cur].sym.trim()}`);
+  toast(`Prices now in ${cur} ${CURRENCIES[cur].sym.trim()}`);
 }
 function updateShipTexts() {
   $$(".shipThreshTxt").forEach(e => e.textContent = `Free shipping over ${money(75)}`);
@@ -1405,10 +1468,12 @@ document.addEventListener("click", (e) => { if (e.target.classList?.contains("mo
 /* init */
 renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
 $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
+buildCurrSelectors();
 $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
 document.documentElement.lang = lang;
 setTheme(theme);
 observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
+refreshRates();
 $("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
