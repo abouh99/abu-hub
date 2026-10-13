@@ -353,6 +353,90 @@ function trackOrder() {
     </div>`;
 }
 
+/* ----- In-app chat assistant ----- */
+let _chatOpened = false;
+function toggleChat(force) {
+  const p = $("#chatPanel"), open = force !== undefined ? force : p.classList.contains("hidden");
+  p.classList.toggle("hidden", !open); p.classList.toggle("flex", open);
+  $("#chatIcoOpen").classList.toggle("hidden", open);
+  $("#chatIcoClose").classList.toggle("hidden", !open);
+  if (open) {
+    $("#chatDot").classList.add("hidden");
+    if (!_chatOpened) { _chatOpened = true; botSay(`Karibu to <strong>Abu.Hub</strong> ✦ I can track orders, explain shipping & returns, or share discount codes. What do you need?`); }
+    setTimeout(() => $("#chatIn").focus(), 100);
+  }
+}
+function chipChat(t) { toggleChat(true); userSay(t); setTimeout(() => botReply(t), 350); }
+function sendChat(e) {
+  e.preventDefault();
+  const inp = $("#chatIn"), t = inp.value.trim();
+  if (!t) return;
+  inp.value = ""; userSay(t);
+  const tp = document.createElement("div");
+  tp.className = "msg-bot typing"; tp.innerHTML = "<span></span> <span></span> <span></span>";
+  $("#chatMsgs").appendChild(tp); scrollChat();
+  setTimeout(() => { tp.remove(); botReply(t); }, 700);
+}
+function userSay(t) {
+  const d = document.createElement("div");
+  d.className = "msg-user"; d.textContent = t;
+  $("#chatMsgs").appendChild(d); scrollChat();
+}
+function botSay(html) {
+  const d = document.createElement("div");
+  d.className = "msg-bot"; d.innerHTML = html;
+  $("#chatMsgs").appendChild(d); scrollChat();
+}
+function scrollChat() { const m = $("#chatMsgs"); m.scrollTop = m.scrollHeight; }
+function botReply(raw) {
+  const t = raw.toLowerCase();
+  const wa = (msg) => `<a target="_blank" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(msg)}">WhatsApp us →</a>`;
+  if (/(track|where.*order|status|delivery status)/.test(t)) {
+    const orders = JSON.parse(localStorage.getItem("abuhub_orders") || "[]");
+    botSay(orders.length
+      ? `Your latest order is <strong>${orders[0].ref}</strong> (${money(orders[0].total)}). Tap <strong>📦 Track</strong> in the menu and enter the ref for the live timeline.`
+      : `No orders on this device yet. After checkout you'll get a ref like <strong>AH-XXXXXX</strong> — paste it into <strong>📦 Track</strong> anytime.`);
+    return;
+  }
+  if (/(ship|deliver|cost.*send|how long)/.test(t)) {
+    botSay(`🚚 Tracked delivery in <strong>3–6 days</strong>. Shipping is <strong>${money(6.95)}</strong> — <strong>FREE over ${money(75)}</strong>. Makers dispatch in 1–2 days.`);
+    return;
+  }
+  if (/(return|refund|exchange|wrong|damaged|broken)/.test(t)) {
+    botSay(`↩️ <strong>30-day money-back guarantee.</strong> Wrong, damaged or not-as-described? Prepaid return label + full refund. Just ${wa("Hi Abu.Hub! I need a return.")} with your order ref.`);
+    return;
+  }
+  if (/(discount|coupon|promo|code|offer|sale|deal)/.test(t)) {
+    botSay(`🏷️ Active codes: <strong>ABUHUB10</strong> (−10%), <strong>MAKER15</strong> (−15% over ${money(100)}), <strong>KARIBU5</strong> (−5%). Tap them in the sale banner to copy — I applied nothing yet, add yours at checkout.`);
+    return;
+  }
+  if (/(pay|mpesa|m-pesa|mobile|card|cash|delivery.*pay|flutterwave)/.test(t)) {
+    botSay(`💳 We accept cards, Mobile Money & bank via Flutterwave/Paystack, PayPal, Stripe — or <strong>Cash / M-Pesa on delivery</strong> at checkout. 100% buyer protection on every order.`);
+    return;
+  }
+  if (/(custom|bespoke|tailor|bulk|wedding|request)/.test(t)) {
+    botSay(`✦ Love it — post it in <strong>Request a custom order</strong> (homepage) and matching makers quote you within ~48h. Free to post.`);
+    return;
+  }
+  if (/(sell|vendor|shop.*open|become.*seller)/.test(t)) {
+    botSay(`🛍️ Opening a shop is <strong>free</strong> — $0 listing fees, 8% max commission, live in 24h. Tap <strong>Sell on Abu.Hub</strong> up top.`);
+    return;
+  }
+  if (/(human|agent|person|call|phone|whatsapp|help|support)/.test(t)) {
+    botSay(`💬 A human is one tap away: ${wa("Hi Abu.Hub! I need help.")} We usually reply within the hour, 8am–10pm EAT.`);
+    return;
+  }
+  if (/(hi|hello|hey|mambo|habari|morning|evening)/.test(t)) {
+    botSay(`Hello! 👋 Ask me about <strong>tracking, shipping, returns, discounts</strong> — or type <strong>human</strong> anytime.`);
+    return;
+  }
+  if (/(thank|asante|shukran|great|bye)/.test(t)) {
+    botSay(`Karibu sana! ✦ Anything else — or tap 🛍️ to keep shopping.`);
+    return;
+  }
+  botSay(`Got it — for that one a human helps best: ${wa("Hi Abu.Hub! " + raw.slice(0, 120))} Or try asking about <strong>orders, shipping, returns or discounts</strong>.`);
+}
+
 /* ----- Alibaba-style: RFQ custom orders ----- */
 function openRFQ(){ showModal("rfqModal"); }
 function submitRFQ(e){
