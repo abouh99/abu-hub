@@ -14,7 +14,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        value: https://abuhub-sigma.vercel.app
+        value: https://abu-hub-jhfi.vercel.app
       - key: FLW_SECRET_KEY
         sync: false
       - key: PAYSTACK_SECRET_KEY
