@@ -29,7 +29,7 @@ const COUPONS = {
 };
 function couponFor(code) { return COUPONS[String(code || "").trim().toUpperCase()]; }
 /* ---------- WhatsApp support ---------- */
-const SUPPORT_WA = "255700000000"; // ← replace with the shop's real WhatsApp number
+const SUPPORT_WA = "255753026506"; // ← replace with the shop's real WhatsApp number
 const vendorById = (id) => VENDORS.find(v => v.id === id);
 const productById = (id) => PRODUCTS.find(p => p.id === id);
 const stars = (r) => "★".repeat(Math.round(r)) + "☆".repeat(5 - Math.round(r));
