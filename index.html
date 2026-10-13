@@ -78,7 +78,8 @@ tailwind.config = {
       </a>
 
       <!-- Nav desktop -->
-      <nav class="hidden lg:flex items-center gap-8 text-[15px] font-medium">
+      <nav class="hidden lg:flex items-center gap-2 text-[15px] font-medium relative" id="mainNav">
+        <span id="navBlob"></span>
         <button onclick="go('shop')" data-nav="shop" class="navlink hover:text-clay">Shop all</button>
         <button onclick="go('shop','Fashion')" data-nav="fashion" class="navlink hover:text-clay">Fashion</button>
         <button onclick="go('shop','Home & Living')" data-nav="home" class="navlink hover:text-clay">Home</button>
@@ -93,6 +94,11 @@ tailwind.config = {
           <option value="USD">$ USD</option>
           <option value="TZS">TSh TZS</option>
         </select>
+        <select id="langSel" onchange="setLang(this.value)" title="Language / Lugha / Langue" class="hidden sm:block bg-white border border-line rounded-full text-[13px] font-semibold px-3 py-2 outline-none cursor-pointer">
+          <option value="en">EN</option>
+          <option value="sw">SW</option>
+          <option value="fr">FR</option>
+        </select>
         <button onclick="openTrack()" class="hidden lg:inline-flex text-[13px] font-semibold px-3 py-2 rounded-full hover:bg-cream2" title="Track your order">📦 Track</button>
         <div class="hidden md:flex items-center bg-white border border-line rounded-full pl-3.5 pr-1 py-1 w-[240px] focus-within:border-ink transition">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6F675E" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -101,6 +107,9 @@ tailwind.config = {
         </div>
         <button onclick="toggleSearchMobile()" class="md:hidden p-2.5 rounded-full hover:bg-cream2" aria-label="Search">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </button>
+        <button id="themeBtn" onclick="toggleTheme()" class="p-2.5 rounded-full hover:bg-cream2" aria-label="Dark mode" title="Neon dark mode">
+          <span id="themeIco">🌙</span>
         </button>
         <button id="accountBtn" onclick="openAuth()" class="hidden sm:grid p-2.5 rounded-full hover:bg-cream2 relative" aria-label="Account">
           <span id="accountIcon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></span>
@@ -138,6 +147,11 @@ tailwind.config = {
       <select onchange="setCurrency(this.value)" class="bg-white border border-line rounded-full text-sm px-3 py-2 outline-none">
         <option value="USD">$ USD</option>
         <option value="TZS">TSh TZS</option>
+      </select>
+      <select onchange="setLang(this.value)" class="bg-white border border-line rounded-full text-sm px-3 py-2 outline-none">
+        <option value="en">English</option>
+        <option value="sw">Kiswahili</option>
+        <option value="fr">Français</option>
       </select>
     </div>
     <button onclick="openSeller()" class="mt-2 w-full bg-ink text-cream rounded-full py-3 font-semibold">Sell on Abu.Hub</button>
@@ -309,6 +323,23 @@ tailwind.config = {
   <div class="max-w-7xl mx-auto px-4 sm:px-6 mt-16">
     <div class="flex items-end justify-between mb-6"><div><p class="eyebrow">Editor’s curation</p><h2 class="h2">Collections to get lost in</h2></div></div>
     <div id="collectionGrid" class="grid sm:grid-cols-3 gap-4"></div>
+  </div>
+
+  <!-- Interactive shape slider -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 mt-16">
+    <div class="rounded-[28px] border border-line bg-white overflow-hidden">
+      <div class="flex items-end justify-between p-6 sm:p-8 pb-0">
+        <div><p class="eyebrow">Drag, tap, explore</p><h2 class="h2">Shop by mood</h2></div>
+        <div class="flex gap-2">
+          <button onclick="moodGo(-1)" class="x-btn !w-11 !h-11 text-lg" aria-label="Previous">‹</button>
+          <button onclick="moodGo(1)" class="x-btn !w-11 !h-11 text-lg" aria-label="Next">›</button>
+        </div>
+      </div>
+      <div class="overflow-hidden p-6 sm:p-8 pt-4">
+        <div id="moodTrack" class="flex gap-5 transition-transform duration-500"></div>
+      </div>
+      <div id="moodDots" class="flex gap-2 justify-center pb-6"></div>
+    </div>
   </div>
 
   <!-- Vendors preview -->
