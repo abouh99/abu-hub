@@ -989,6 +989,33 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("scroll", () => $("#siteHeader").classList.toggle("scrolled", scrollY > 10));
 document.addEventListener("click", (e) => { if (e.target.classList?.contains("modal")) closeAll(); });
 
+/* ---------- 3D tilt on cards (desktop pointers only) ---------- */
+(function initTilt(){
+  if (!window.matchMedia("(hover:hover) and (pointer:fine)").matches) return;
+  let raf = null;
+  const SEL = ".p-card,.cat-card,.v-card-light,.v-card,.rank-card,.hot-card";
+  document.addEventListener("mousemove", (e) => {
+    const card = e.target.closest ? e.target.closest(SEL) : null;
+    if (!card) return;
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      const r = card.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5;
+      const y = (e.clientY - r.top) / r.height - 0.5;
+      card.classList.add("tilt3d");
+      card.style.transform = `perspective(900px) rotateY(${x * 7}deg) rotateX(${-y * 7}deg) translateY(-4px)`;
+    });
+  });
+  document.addEventListener("mouseout", (e) => {
+    const card = e.target.closest ? e.target.closest(SEL) : null;
+    if (card && (!e.relatedTarget || !card.contains(e.relatedTarget))) {
+      card.style.transform = "";
+      setTimeout(() => card.classList.remove("tilt3d"), 200);
+    }
+  }, true);
+})();
+
 /* init */
 renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
 $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
