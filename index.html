@@ -469,6 +469,54 @@ tailwind.config = {
   </div>
 </section>
 
+<!-- ============ SELLER HUB VIEW ============ -->
+<section id="view-seller" class="view hidden">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-20">
+    <div id="sellerGate"></div>
+    <div id="sellerDash" class="hidden">
+      <p class="eyebrow">Seller hub</p>
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <h2 class="font-display text-4xl sm:text-5xl tracking-tight">Karibu, <span id="sellerShopName">maker</span></h2>
+        <button onclick="go('sell')" class="link-more text-sm">Seller plans →</button>
+      </div>
+      <div id="sellerStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6"></div>
+      <div class="flex gap-2 mt-8 border-b border-line">
+        <button id="tabBtnProducts" onclick="sellerTab('products')" class="px-5 py-3 font-semibold text-[15px] border-b-2 border-ink -mb-px">My products</button>
+        <button id="tabBtnAdd" onclick="sellerTab('add')" class="px-5 py-3 font-semibold text-[15px] border-b-2 border-transparent -mb-px text-muted">+ Add product</button>
+      </div>
+      <div id="sellerProducts" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mt-6"></div>
+      <div id="sellerForm" class="hidden max-w-2xl mt-6 bg-white border border-line rounded-[24px] p-6 sm:p-8">
+        <h3 class="font-display text-2xl" id="upTitle">List a new product</h3>
+        <p class="text-sm text-muted mt-1">One product per submission · goes live after review (instant in demo).</p>
+        <form onsubmit="submitUpload(event)" class="mt-5 space-y-3">
+          <div>
+            <label class="f-label">Photo *</label>
+            <div class="flex gap-3 items-start">
+              <img id="upPreview" class="w-24 h-28 rounded-2xl object-cover border border-line bg-cream2 hidden" alt="" />
+              <div class="flex-1">
+                <input id="upFile" type="file" accept="image/*" onchange="upPhoto(this)" class="f-input !py-2.5" />
+                <p id="upPhotoMsg" class="text-xs mt-1.5 text-muted">JPG/PNG, max 2MB. Auto-compressed on device.</p>
+              </div>
+            </div>
+          </div>
+          <div><label class="f-label">Product name *</label><input id="upName" maxlength="120" placeholder="e.g. Handwoven Kikapu Basket" class="f-input" /></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="f-label">Price (USD) *</label><input id="upPrice" type="number" min="0.01" step="0.01" placeholder="45" class="f-input" /></div>
+            <div><label class="f-label">Stock *</label><input id="upStock" type="number" min="0" step="1" value="10" class="f-input" /></div>
+          </div>
+          <div><label class="f-label">Category *</label><select id="upCat" class="f-input"><option value="">Choose…</option><option>Fashion</option><option>Home & Living</option><option>Beauty</option><option>Jewelry</option><option>Art & Craft</option><option>Grocery</option><option>Other</option></select></div>
+          <div><label class="f-label">Description *</label><textarea id="upDesc" rows="3" maxlength="2000" placeholder="Materials, size, care, story…" class="f-input"></textarea></div>
+          <p id="upErr" class="hidden text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></p>
+          <div class="flex gap-2">
+            <button id="upSubmit" class="btn-ink flex-1">Save product →</button>
+            <button type="button" onclick="sellerTab('products')" class="btn-line">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ SHOP VIEW ============ -->
 <section id="view-shop" class="view hidden">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-20">
@@ -632,7 +680,7 @@ tailwind.config = {
       </div>
     </div>
     <div><h4 class="f-h">Shop</h4><ul class="f-ul"><li><button onclick="go('shop')">All goods</button></li><li><button onclick="go('shop','Fashion')">Fashion</button></li><li><button onclick="go('shop','Home & Living')">Home & Living</button></li><li><button onclick="go('shop','Beauty')">Beauty</button></li><li><button onclick="go('shop','Jewelry')">Jewelry</button></li></ul></div>
-    <div><h4 class="f-h">Sellers</h4><ul class="f-ul"><li><button onclick="go('sell')">Start selling</button></li><li><button onclick="filters.dropship=true;syncFilterUI();go('shop')">📦 Dropshipping</button></li><li><button onclick="go('vendors')">Find vendors</button></li><li><button onclick="go('about')">Seller handbook</button></li><li><button onclick="go('about')">Fees & payouts</button></li></ul></div>
+    <div><h4 class="f-h">Sellers</h4><ul class="f-ul"><li><button onclick="go('sell')">Start selling</button></li><li><button onclick="go('seller')">Seller dashboard</button></li><li><button onclick="filters.dropship=true;syncFilterUI();go('shop')">📦 Dropshipping</button></li><li><button onclick="go('vendors')">Find vendors</button></li><li><button onclick="go('about')">Seller handbook</button></li><li><button onclick="go('about')">Fees & payouts</button></li></ul></div>
     <div><h4 class="f-h">Support</h4><ul class="f-ul"><li><button onclick="openTrack()">📦 Track your order</button></li><li><a href="#">Help centre</a></li><li><a href="#">Shipping & returns</a></li><li><a href="#">Buyer protection</a></li><li><a href="#">Contact: hello@abuhub.com</a></li></ul></div>
   </div>
   <div class="border-t border-white/10"><div class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row gap-2 items-center justify-between text-[13px] text-cream/50"><p>© 2026 Abu.Hub Marketplace · Crafted for makers, with care.</p><p>Visa · Mastercard · Amex · Mobile Money · PayPal</p></div></div>
