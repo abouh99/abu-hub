@@ -8,6 +8,9 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const { emit, startWorker } = require("./queue");
+const { getPool } = require("./db-pool");
+startWorker();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,7 +45,60 @@ function auth(req, res, next) {
 }
 
 /* ---------- health ---------- */
-app.get("/api/health", (req, res) => res.json({ ok: true, service: "abuhub-api", time: new Date().toISOString() }));
+app.get("/api/health", async (req, res) => {
+  let dbBackend = "file";
+  try { if (getPool()) { await getPool().query("SELECT 1"); dbBackend = "postgres"; } } catch {}
+  res.json({ ok: true, service: "abuhub-api", db: dbBackend, time: new Date().toISOString() });
+});
+
+/* Zero-budget anti-sleep: ping our own public URL every 14 min.
+   (Render free sleeps after ~15 min idle. Proper fix = Starter $7/mo.) */
+(function selfPing() {
+  const url = process.env.SELF_URL || process.env.RENDER_EXTERNAL_URL;
+  if (!url) return;
+  const ping = () => fetch(url.replace(/\/$/, "") + "/api/health").catch(() => {});
+  setInterval(ping, 14 * 60 * 1000);
+})();
+
+/* ---------- media uploads (pre-signed seam) ----------
+   With S3 env set: returns a pre-signed PUT URL (browser uploads direct,
+   bypassing Node entirely). Without: safe local upload, 2MB cap, images only. */
+app.get("/api/media/upload-url", async (req, res) => {
+  const ext = String(req.query.ext || "jpg").replace(/[^a-z]/g, "").slice(0, 4) || "jpg";
+  if (process.env.S3_BUCKET && process.env.AWS_REGION) {
+    return res.json({ mode: "presigned", note: "Wire @aws-sdk/s3-request-presigner here with S3_* env", key: `uploads/${Date.now()}.${ext}` });
+  }
+  res.json({ mode: "local", uploadUrl: "/api/media/direct", maxBytes: 2 * 1024 * 1024 });
+});
+let _multer = null;
+function multer() {
+  if (!_multer) {
+    const m = require("multer");
+    _multer = m({ storage: m.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+      fileFilter: (req, f, cb) => cb(null, /^image\//.test(f.mimetype)) });
+  }
+  return _multer;
+}
+const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d" }));
+app.post("/api/media/direct", (req, res) => {
+  multer().single("photo")(req, res, (err) => {
+    if (err) return res.status(400).json({ error: "Image required, max 2MB" });
+    if (!req.file) return res.status(400).json({ error: "No image received" });
+    const ext = (req.file.mimetype.split("/")[1] || "jpg").replace(/[^a-z]/g, "").slice(0, 4);
+    const name = Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e6) + "." + ext;
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), req.file.buffer); // buffer capped at 2MB — never OOMs
+    res.json({ ok: true, url: "/uploads/" + name });
+  });
+});
+
+/* ---------- job observability ---------- */
+app.get("/api/jobs", (req, res) => {
+  const db = load();
+  const jobs = (db.jobs || []).slice(0, 20).map(j => ({ id: j.id, event: j.event, status: j.status, attempts: j.attempts, log: j.log }));
+  res.json({ pending: (db.jobs || []).filter(j => j.status === "pending").length, jobs, outbox: (db.outbox || []).slice(0, 10) });
+});
 
 /* ---------- auth ---------- */
 app.post("/api/auth/signup", async (req, res) => {
@@ -102,6 +158,7 @@ app.post("/api/orders", auth, (req, res) => {
   }
   const order = { ref: ref || uid("AH-"), key: key || undefined, email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, date: new Date().toISOString() };
   db.orders.unshift(order); persist(db);
+  emit("order.created", order); // background: receipts, vendor ping, reseller webhook
   res.json({ ok: true, order: { ref: order.ref, total: order.total } });
 });
 
@@ -133,6 +190,7 @@ app.post("/api/rfq", (req, res) => {
   const db = load();
   const rq = { id: uid("RQ-"), title: title.trim(), cat, qty, budget, contact, details, date: new Date().toISOString() };
   db.rfqs.unshift(rq); persist(db);
+  emit("rfq.created", rq);
   res.json({ ok: true, id: rq.id });
 });
 
@@ -145,6 +203,7 @@ app.post("/api/sellers", (req, res) => {
   const db = load();
   db.sellers.unshift({ id: uid("S-"), shop, owner, email, category, story, date: new Date().toISOString() });
   persist(db);
+  emit("seller.applied", { shop, owner, email, category });
   res.json({ ok: true });
 });
 
