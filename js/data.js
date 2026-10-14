@@ -87,6 +87,17 @@ const VENDORS = [
     rating: 4.8, reviews: 764, products: 33, sales: "5k",
     verified: true, joined: "2023", dropship: true,
     story: "Washi paper goods, risograph prints and brass desk tools. Slow stationery for thoughtful work."
+  },
+  {
+    id: "v-zola",
+    name: "Zola Tech Hub",
+    tagline: "Genuine gadgets, TZ warranty",
+    location: "Dar es Salaam, Tanzania",
+    avatar: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=200&q=80&auto=format&fit=crop",
+    cover: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=1200&q=80&auto=format&fit=crop",
+    rating: 4.8, reviews: 1930, products: 47, sales: "11k",
+    verified: true, joined: "2022", dropship: true,
+    story: "Dar's trusted gadget plug: genuine phones, laptops and consoles with 12-month local warranty and M-Pesa checkout."
   }
 ];
 
@@ -114,7 +125,13 @@ const PRODUCTS = [
   { id: "p21", vendorId: "v-kiln", name: "Rustic Pasta Bowls — Set of 4", category: "Home & Living", price: 112, oldPrice: 140, rating: 4.8, reviews: 176, img: "https://images.unsplash.com/photo-1603199506016-b9a594b593c0?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Oat"], desc: "Generous 800ml coupe shape, reactive glaze — no two alike." },
   { id: "p22", vendorId: "v-loom", name: "Market Tote — Palm & Leather", category: "Fashion", price: 78, oldPrice: null, rating: 4.8, reviews: 231, img: "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Natural"], desc: "Handwoven palm, vegetable-tanned handles, interior pocket. Fits 13\" laptop." },
   { id: "p23", vendorId: "v-terra", name: "Espresso Blend — Dark Roast", category: "Grocery", price: 29, oldPrice: null, rating: 4.8, reviews: 502, img: "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Beans", "Espresso grind"], desc: "Chocolate, molasses, orange zest. Built for milk drinks & moka pot." },
-  { id: "p24", vendorId: "v-paper", name: "Brass Ruler + Cutter Set", category: "Art & Craft", price: 38, oldPrice: null, rating: 4.7, reviews: 89, img: "https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Brass"], desc: "Solid brass ruler, Japanese steel cutter, cutting mat. Lifetime tools." }
+  { id: "p24", vendorId: "v-paper", name: "Brass Ruler + Cutter Set", category: "Art & Craft", price: 38, oldPrice: null, rating: 4.7, reviews: 89, img: "https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Brass"], desc: "Solid brass ruler, Japanese steel cutter, cutting mat. Lifetime tools." },
+  { id: "p25", vendorId: "v-zola", name: "Tecno Spark 20 Pro", category: "Phones & Gadgets", price: 149, oldPrice: 179, rating: 4.7, reviews: 412, img: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800&q=80&auto=format&fit=crop", badge: "12-mo warranty", colors: ["Neon Green", "Gloss Black"], desc: "Genuine unit, sealed box, 12-month Zola warranty. Dual SIM, M-Pesa ready.", specs: { chip: "Helio G99", ram: "8GB", storage: "256GB", screen: "6.78\" 120Hz", battery: "5000mAh", condition: "New" } },
+  { id: "p26", vendorId: "v-zola", name: "Samsung Galaxy A35 (Certified Refurbished)", category: "Phones & Gadgets", price: 229, oldPrice: 269, rating: 4.6, reviews: 187, img: "https://images.unsplash.com/photo-1580910051074-3eb694886505?w=800&q=80&auto=format&fit=crop", badge: "Certified", colors: ["Awesome Navy", "Lilac"], desc: "Certified refurbished: new battery, 54-point check, 6-month warranty.", specs: { chip: "Exynos 1380", ram: "8GB", storage: "128GB", screen: "6.6\" Super AMOLED", battery: "5000mAh", condition: "Refurbished" } },
+  { id: "p27", vendorId: "v-zola", name: "HP Pavilion 15 Laptop", category: "Computers & PCs", price: 649, oldPrice: 749, rating: 4.8, reviews: 143, img: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800&q=80&auto=format&fit=crop", badge: "12-mo warranty", colors: ["Silver"], desc: "Brand new, sealed. Ideal for campus, office and creators. Free laptop bag.", specs: { chip: "Ryzen 7 7730U", ram: "16GB", storage: "512GB SSD", screen: "15.6\" FHD", condition: "New" } },
+  { id: "p28", vendorId: "v-zola", name: "Lenovo ThinkPad T480 (Refurbished)", category: "Computers & PCs", price: 329, oldPrice: null, rating: 4.7, reviews: 209, img: "https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=800&q=80&auto=format&fit=crop", badge: "Business grade", colors: ["Black"], desc: "Legendary ThinkPad keyboard, fresh thermal paste, SSD + 6-month warranty.", specs: { chip: "Intel i5 8th Gen", ram: "16GB", storage: "512GB SSD", screen: "14\" FHD", condition: "Refurbished" } },
+  { id: "p29", vendorId: "v-zola", name: "PlayStation 5 Slim", category: "Gaming & Consoles", price: 499, oldPrice: 549, rating: 4.9, reviews: 321, img: "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=800&q=80&auto=format&fit=crop", badge: "Sealed", colors: ["White"], desc: "Sealed 1TB Slim + DualSense controller. 12-month warranty, TZ power cable.", specs: { chip: "AMD Zen 2", ram: "16GB GDDR6", storage: "1TB SSD", condition: "New" } },
+  { id: "p30", vendorId: "v-zola", name: "Pro Wireless Controller", category: "Gaming & Consoles", price: 59, oldPrice: null, rating: 4.6, reviews: 178, img: "https://images.unsplash.com/photo-1552820728-8b83bb6b773f?w=800&q=80&auto=format&fit=crop", badge: null, colors: ["Neon", "Black"], desc: "Low-latency wireless, 20-hour battery, PC/mobile/console compatible.", specs: { battery: "20-hour", condition: "New" } }
 ];
 
 const CATEGORIES = [
@@ -123,8 +140,14 @@ const CATEGORIES = [
   { name: "Beauty", img: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&q=80&auto=format&fit=crop", count: 642 },
   { name: "Jewelry", img: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&q=80&auto=format&fit=crop", count: 518 },
   { name: "Art & Craft", img: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&q=80&auto=format&fit=crop", count: 734 },
-  { name: "Grocery", img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80&auto=format&fit=crop", count: 389 }
+  { name: "Grocery", img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80&auto=format&fit=crop", count: 389 },
+  { name: "Phones & Gadgets", img: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&q=80&auto=format&fit=crop", count: 452 },
+  { name: "Computers & PCs", img: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=600&q=80&auto=format&fit=crop", count: 318 },
+  { name: "Gaming & Consoles", img: "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=600&q=80&auto=format&fit=crop", count: 196 }
 ];
+
+const TECH_CATS = ["Phones & Gadgets", "Computers & PCs", "Gaming & Consoles"];
+const ARTISAN_CATS = ["Fashion", "Home & Living", "Beauty", "Jewelry", "Art & Craft", "Grocery"];
 
 const COLLECTIONS = [
   { title: "The Autumn Edit", sub: "Warm knits, clay tones & candlelight", img: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=900&q=80&auto=format&fit=crop" },
