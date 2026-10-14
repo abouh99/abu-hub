@@ -448,6 +448,7 @@ app.post("/api/chat-ack", (req, res) => {
 
 /* ---------- Promotions shelf (flat-fee featured slots: hot | trending) ---------- */
 const PROMO_RATES = { hot: 9, trending: 19 }; // USD per week
+const SUB_TIERS = { pro: { price: 9, label: "Pro" }, elite: { price: 29, label: "Elite" } }; // USD per month
 app.get("/api/promotions", (req, res) => {
   const db = load();
   const now = Date.now();
@@ -467,6 +468,35 @@ app.post("/api/promotions", auth, (req, res) => {
   db.promotions.unshift(promo); persist(db);
   emit("promo.sold", promo);
   res.json({ ok: true, promo: { id: promo.id, fee: promo.fee, ends: promo.ends } });
+});
+/* ---------- Premium subscriptions (tiers gate badge + analytics) ---------- */
+app.get("/api/subscriptions/tiers", (req, res) => res.json({ tiers: SUB_TIERS }));
+app.post("/api/subscriptions", auth, requireRole("seller", "admin"), (req, res) => {
+  const { tier = "pro" } = req.body || {};
+  if (!SUB_TIERS[tier] || !req.profile) return res.status(400).json({ error: "tier must be pro|elite" });
+  const db = load();
+  db.subscriptions = db.subscriptions || [];
+  const now = Date.now();
+  const sub = { id: uid("SB-"), sellerId: req.profile.id, email: req.user.email, tier,
+    fee: SUB_TIERS[tier].price, status: "pending-invoice",
+    starts: now, ends: now + 30 * 864e5, date: new Date().toISOString() };
+  db.subscriptions.unshift(sub); persist(db);
+  emit("sub.sold", sub);
+  res.json({ ok: true, sub: { id: sub.id, tier, fee: sub.fee } });
+});
+app.get("/api/subscriptions/mine", auth, requireRole("seller", "admin"), (req, res) => {
+  const db = load();
+  const now = Date.now();
+  const mine = ((db.subscriptions || []).filter(s => s.sellerId === req.profile?.id));
+  const active = mine.find(s => s.ends > now) || null;
+  res.json({ active, history: mine.slice(0, 20) });
+});
+app.get("/api/sellers/tiers", (req, res) => {
+  const db = load();
+  const now = Date.now();
+  const map = {};
+  (db.subscriptions || []).forEach(s => { if (s.ends > now && (!map[s.sellerId] || s.ends > map[s.sellerId].ends)) map[s.sellerId] = { tier: s.tier, ends: s.ends }; });
+  res.json({ tiers: map });
 });
 /* ---------- Escrow release (8% commission ledger hook) ---------- */
 app.post("/api/orders/:ref/release", auth, (req, res) => {
