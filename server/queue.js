@@ -58,6 +58,11 @@ const handlers = {
   async "order.released"(db, job) {
     const o = job.payload;
     outbox(db, o.seller, `Payout released ${o.ref}`, `${o.total} released from escrow (8% commission kept).`);
+  },
+  async "promo.sold"(db, job) {
+    const p = job.payload;
+    outbox(db, p.email, `Promotion invoice ${p.id}`, `${p.shelf} shelf · ${p.weeks} week(s) · fee $${p.fee}. Pay to activate pinning.`);
+    outbox(db, "ads@abuhub.internal", `New promo ${p.id}`, `${p.productId} · ${p.shelf} · $${p.fee} · invoice ${p.status}.`);
   }
 };
 
