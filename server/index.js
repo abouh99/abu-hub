@@ -156,7 +156,7 @@ app.post("/api/orders", auth, (req, res) => {
     const dup = db.orders.find(o => o.ref === key || o.key === key);
     if (dup) return res.json({ ok: true, deduped: true, order: { ref: dup.ref, total: dup.total } });
   }
-  const order = { ref: ref || uid("AH-"), key: key || undefined, email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, date: new Date().toISOString() };
+  const order = { ref: ref || uid("AH-"), key: key || undefined, email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, escrow: "held", date: new Date().toISOString() };
   db.orders.unshift(order); persist(db);
   emit("order.created", order); // background: receipts, vendor ping, reseller webhook
   res.json({ ok: true, order: { ref: order.ref, total: order.total } });
@@ -242,6 +242,53 @@ function markVerified(ref, via) {
     if (o) { o.verified = true; o.verifiedVia = via; persist(db); }
   } catch {}
 }
+
+/* ---------- WhatsApp Shield (Protocol A) ----------
+   Raw seller numbers NEVER leave the server. Frontend links to
+   /api/vendors/:id/chat; we 302-redirect to wa.me. Numbers live in
+   vendor-contacts.json (never in git-shared frontend code). */
+const CONTACTS_FILE = path.join(__dirname, "vendor-contacts.json");
+function vendorNumber(id) {
+  try { return (JSON.parse(fs.readFileSync(CONTACTS_FILE, "utf8"))[id] || "").replace(/\D/g, ""); }
+  catch { return ""; }
+}
+/* Scraper shield: 30 chat redirects per IP per minute */
+const _rl = new Map();
+function chatLimiter(req, res, next) {
+  const k = (req.ip || "?") + ":" + Math.floor(Date.now() / 6e4);
+  const n = (_rl.get(k) || 0) + 1;
+  _rl.set(k, n);
+  if (_rl.size > 5000) _rl.clear();
+  if (n > 30) return res.status(429).json({ error: "Slow down — too many chat requests" });
+  next();
+}
+app.get("/api/vendors/:id/chat", chatLimiter, (req, res) => {
+  const num = vendorNumber(req.params.id);
+  if (!num) return res.status(404).json({ error: "Vendor chat unavailable — contact Abu.Hub support instead" });
+  const text = String(req.query.text || "Hi! I found you on Abu.Hub.").slice(0, 300);
+  res.redirect(302, "https://wa.me/" + num + "?text=" + encodeURIComponent(text));
+});
+/* Disintermediation audit trail (Protocol B): every handoff ack is logged */
+app.post("/api/chat-ack", (req, res) => {
+  const { vendor = "" } = req.body || {};
+  const db = load();
+  db.chatacks = db.chatacks || [];
+  db.chatacks.unshift({ vendor, ip: req.ip, date: new Date().toISOString() });
+  db.chatacks = db.chatacks.slice(0, 500);
+  persist(db);
+  res.json({ ok: true });
+});
+
+/* ---------- Escrow release (8% commission ledger hook) ---------- */
+app.post("/api/orders/:ref/release", auth, (req, res) => {
+  const db = load();
+  const o = db.orders.find(x => x.ref === req.params.ref);
+  if (!o) return res.status(404).json({ error: "Unknown order" });
+  o.escrow = "released";
+  persist(db);
+  emit("order.released", { ref: o.ref, total: o.total, seller: o.email });
+  res.json({ ok: true, escrow: "released" });
+});
 
 app.use((req, res) => res.status(404).json({ error: "Not found" }));
 app.listen(PORT, () => console.log(`Abu.Hub API live on :${PORT}`));
