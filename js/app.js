@@ -1416,7 +1416,7 @@ function completeOrder(ref, total, method){
   const lineItems = cart.map(l => ({ id: l.id, qty: l.qty, variant: l.variant }));
   // Mirror to cloud API when signed in + configured (never blocks checkout)
   if (API_BASE && API_TOKEN) {
-    api("/api/orders", { method: "POST", body: JSON.stringify({ items: lineItems, total, method, ref, contact: checkoutData }) }).catch(() => null);
+    api("/api/orders", { method: "POST", headers: { "Idempotency-Key": ref }, body: JSON.stringify({ items: lineItems, total, method, ref, contact: checkoutData }) }).catch(() => null);
   }
   const orders = JSON.parse(localStorage.getItem("abuhub_orders") || "[]");
   orders.unshift({ ref, total, method, email: checkoutData.email, name: checkoutData.fname, items: cart.map(l => ({ id: l.id, qty: l.qty, variant: l.variant })), date: new Date().toISOString() });
