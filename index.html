@@ -89,12 +89,33 @@ tailwind.config = {
         </span>
       </a>
 
-      <!-- Nav desktop -->
+      <!-- Nav desktop: dual-wing discovery -->
       <nav class="hidden lg:flex items-center gap-2 text-[15px] font-medium relative" id="mainNav">
         <span id="navBlob"></span>
         <button onclick="go('shop')" data-nav="shop" class="navlink hover:text-clay">Shop all</button>
-        <button onclick="go('shop','Fashion')" data-nav="fashion" class="navlink hover:text-clay">Fashion</button>
-        <button onclick="go('shop','Home & Living')" data-nav="home" class="navlink hover:text-clay">Home</button>
+        <div class="relative group">
+          <button class="navlink hover:text-clay flex items-center gap-1">Artisan ▾</button>
+          <div class="absolute top-full left-0 pt-2 hidden group-hover:block z-50">
+            <div class="bg-white border border-line rounded-2xl shadow-card p-2 w-52">
+              <button onclick="go('shop','Fashion')" class="drop-item">Fashion</button>
+              <button onclick="go('shop','Home & Living')" class="drop-item">Home & Living</button>
+              <button onclick="go('shop','Beauty')" class="drop-item">Beauty</button>
+              <button onclick="go('shop','Jewelry')" class="drop-item">Jewelry</button>
+              <button onclick="go('shop','Art & Craft')" class="drop-item">Art & Craft</button>
+              <button onclick="go('shop','Grocery')" class="drop-item">Grocery</button>
+            </div>
+          </div>
+        </div>
+        <div class="relative group">
+          <button class="navlink hover:text-clay flex items-center gap-1">Tech Hub ▾</button>
+          <div class="absolute top-full left-0 pt-2 hidden group-hover:block z-50">
+            <div class="bg-white border border-line rounded-2xl shadow-card p-2 w-56">
+              <button onclick="go('shop','Phones & Gadgets')" class="drop-item">📱 Phones & Gadgets</button>
+              <button onclick="go('shop','Computers & PCs')" class="drop-item">💻 Computers & PCs</button>
+              <button onclick="go('shop','Gaming & Consoles')" class="drop-item">🎮 Gaming & Consoles</button>
+            </div>
+          </div>
+        </div>
         <button onclick="go('vendors')" data-nav="vendors" class="navlink hover:text-clay">Vendors</button>
         <button onclick="go('about')" data-nav="about" class="navlink hover:text-clay">Our story</button>
         <span class="px-2.5 py-1 rounded-full bg-ink text-cream text-xs flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 2,400+ sellers live</span>
@@ -150,8 +171,14 @@ tailwind.config = {
   <!-- Mobile nav drawer -->
   <div id="mobileNav" class="lg:hidden hidden border-t border-line bg-cream px-6 py-4 space-y-1 text-[16px] font-medium">
     <button onclick="go('shop')" class="block w-full text-left py-2.5 border-b border-line/70">Shop all</button>
-    <button onclick="go('shop','Fashion')" class="block w-full text-left py-2.5 border-b border-line/70">Fashion</button>
-    <button onclick="go('shop','Home & Living')" class="block w-full text-left py-2.5 border-b border-line/70">Home & Living</button>
+    <p class="text-[11px] uppercase tracking-[0.2em] text-muted pt-2">Artisan market</p>
+    <button onclick="go('shop','Fashion')" class="block w-full text-left py-2 border-b border-line/70">Fashion</button>
+    <button onclick="go('shop','Home & Living')" class="block w-full text-left py-2 border-b border-line/70">Home & Living</button>
+    <button onclick="go('shop','Jewelry')" class="block w-full text-left py-2 border-b border-line/70">Jewelry</button>
+    <p class="text-[11px] uppercase tracking-[0.2em] text-muted pt-2">Tech hub</p>
+    <button onclick="go('shop','Phones & Gadgets')" class="block w-full text-left py-2 border-b border-line/70">📱 Phones & Gadgets</button>
+    <button onclick="go('shop','Computers & PCs')" class="block w-full text-left py-2 border-b border-line/70">💻 Computers & PCs</button>
+    <button onclick="go('shop','Gaming & Consoles')" class="block w-full text-left py-2 border-b border-line/70">🎮 Gaming & Consoles</button>
     <button onclick="go('vendors')" class="block w-full text-left py-2.5 border-b border-line/70">Vendors</button>
     <button onclick="go('about')" class="block w-full text-left py-2.5 border-b border-line/70">Our story</button>
     <button onclick="openTrack()" class="block w-full text-left py-2.5 border-b border-line/70">📦 Track order</button>
@@ -504,7 +531,26 @@ tailwind.config = {
             <div><label class="f-label">Price (USD) *</label><input id="upPrice" type="number" min="0.01" step="0.01" placeholder="45" class="f-input" /></div>
             <div><label class="f-label">Stock *</label><input id="upStock" type="number" min="0" step="1" value="10" class="f-input" /></div>
           </div>
-          <div><label class="f-label">Category *</label><select id="upCat" class="f-input"><option value="">Choose…</option><option>Fashion</option><option>Home & Living</option><option>Beauty</option><option>Jewelry</option><option>Art & Craft</option><option>Grocery</option><option>Other</option></select></div>
+          <div><label class="f-label">Category *</label><select id="upCat" onchange="upCatChange()" class="f-input"><option value="">Choose…</option><option>Fashion</option><option>Home & Living</option><option>Beauty</option><option>Jewelry</option><option>Art & Craft</option><option>Grocery</option><option>Other</option><option>Phones & Gadgets</option><option>Computers & PCs</option><option>Gaming & Consoles</option></select></div>
+          <div id="techFields" class="hidden rounded-2xl border border-[#0AA5C2]/40 bg-[#0AA5C2]/5 p-4 space-y-2.5">
+            <p class="f-label !mb-0">⚡ Technical specifications</p>
+            <div class="grid grid-cols-2 gap-2.5">
+              <input id="upChip" placeholder="Chip (e.g. Helio G99)" class="f-input" />
+              <input id="upRam" placeholder="RAM (e.g. 8GB)" class="f-input" />
+              <input id="upStorage" placeholder="Storage (e.g. 256GB)" class="f-input" />
+              <input id="upScreen" placeholder='Screen (e.g. 6.78" 120Hz)' class="f-input" />
+              <input id="upBattery" placeholder="Battery (e.g. 5000mAh)" class="f-input" />
+              <select id="upCond" class="f-input"><option value="">Condition…</option><option>New</option><option>Refurbished</option><option>Used – like new</option></select>
+            </div>
+          </div>
+          <div id="craftFields" class="hidden rounded-2xl border border-line bg-cream p-4 space-y-2.5">
+            <p class="f-label !mb-0">❋ Artisan details</p>
+            <input id="upMaterials" placeholder="Materials (e.g. highland wool, indigo dye)" class="f-input" />
+            <div class="grid grid-cols-2 gap-2.5">
+              <input id="upDims" placeholder="Dimensions (e.g. 200×130cm)" class="f-input" />
+              <input id="upCare" placeholder="Care (e.g. hand wash cold)" class="f-input" />
+            </div>
+          </div>
           <div><label class="f-label">Description *</label><textarea id="upDesc" rows="3" maxlength="2000" placeholder="Materials, size, care, story…" class="f-input"></textarea></div>
           <p id="upErr" class="hidden text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></p>
           <div class="flex gap-2">
@@ -542,6 +588,13 @@ tailwind.config = {
         <div class="mb-2"><p class="f-label">Vendor</p><div id="vendorFilters" class="space-y-1.5 max-h-44 overflow-auto pr-1"></div></div>
         <div class="mt-5 pt-5 border-t border-line"><p class="f-label">Fulfilment</p>
           <label class="flex items-center gap-2.5 text-sm cursor-pointer font-medium"><input id="dsCheck" type="checkbox" onchange="toggleDropship()" class="w-4 h-4 accent-[#0AA5C2]" /> 📦 Ships from maker (dropship)</label>
+        </div>
+        <div id="techFilters" class="mt-5 pt-5 border-t border-line hidden"><p class="f-label">⚡ Hardware specs</p>
+          <div class="space-y-2.5">
+            <select id="fRam" onchange="setTech('ram',this.value)" class="f-input !text-[13px]"><option value="">RAM: any</option><option value="4">4GB+</option><option value="8">8GB+</option><option value="12">12GB+</option><option value="16">16GB+</option></select>
+            <select id="fStorage" onchange="setTech('storage',this.value)" class="f-input !text-[13px]"><option value="">Storage: any</option><option value="128">128GB+</option><option value="256">256GB+</option><option value="512">512GB+</option><option value="1000">1TB+</option></select>
+            <select id="fCond" onchange="setTech('cond',this.value)" class="f-input !text-[13px]"><option value="">Condition: any</option><option>New</option><option>Refurbished</option></select>
+          </div>
         </div>
       </aside>
 
@@ -679,7 +732,7 @@ tailwind.config = {
         <a href="#" class="soc" aria-label="Instagram">◈</a><a href="#" class="soc" aria-label="X">✕</a><a href="#" class="soc" aria-label="TikTok">♪</a><a href="#" class="soc" aria-label="Pinterest">℗</a>
       </div>
     </div>
-    <div><h4 class="f-h">Shop</h4><ul class="f-ul"><li><button onclick="go('shop')">All goods</button></li><li><button onclick="go('shop','Fashion')">Fashion</button></li><li><button onclick="go('shop','Home & Living')">Home & Living</button></li><li><button onclick="go('shop','Beauty')">Beauty</button></li><li><button onclick="go('shop','Jewelry')">Jewelry</button></li></ul></div>
+    <div><h4 class="f-h">Shop</h4><ul class="f-ul"><li><button onclick="go('shop')">All goods</button></li><li><button onclick="go('shop','Fashion')">Fashion</button></li><li><button onclick="go('shop','Home & Living')">Home & Living</button></li><li><button onclick="go('shop','Beauty')">Beauty</button></li><li><button onclick="go('shop','Jewelry')">Jewelry</button></li><li><button onclick="go('shop','Phones & Gadgets')">📱 Phones & Gadgets</button></li><li><button onclick="go('shop','Computers & PCs')">💻 Computers & PCs</button></li><li><button onclick="go('shop','Gaming & Consoles')">🎮 Gaming</button></li></ul></div>
     <div><h4 class="f-h">Sellers</h4><ul class="f-ul"><li><button onclick="go('sell')">Start selling</button></li><li><button onclick="go('seller')">Seller dashboard</button></li><li><button onclick="filters.dropship=true;syncFilterUI();go('shop')">📦 Dropshipping</button></li><li><button onclick="go('vendors')">Find vendors</button></li><li><button onclick="go('about')">Seller handbook</button></li><li><button onclick="go('about')">Fees & payouts</button></li></ul></div>
     <div><h4 class="f-h">Support</h4><ul class="f-ul"><li><button onclick="openTrack()">📦 Track your order</button></li><li><a href="#">Help centre</a></li><li><a href="#">Shipping & returns</a></li><li><a href="#">Buyer protection</a></li><li><a href="#">Contact: hello@abuhub.com</a></li></ul></div>
   </div>
