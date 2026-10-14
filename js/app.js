@@ -795,6 +795,29 @@ function trackOrder() {
     </div>`;
 }
 
+/* ----- Shielded vendor chat (Protocol A+B: no raw numbers + disclaimer) ----- */
+let _pendingVendorChat = null;
+function vendorChat(id) {
+  const v = vendorById(id); if (!v) return;
+  _pendingVendorChat = id;
+  $("#protectVendor").textContent = v.name;
+  showModal("protectModal");
+}
+function protectContinue() {
+  const id = _pendingVendorChat, v = vendorById(id);
+  const ack = { vendor: id, date: new Date().toISOString(), user: (_authUser || {}).email || "guest" };
+  const a = JSON.parse(localStorage.getItem("abuhub_chatack") || "[]");
+  a.unshift(ack); localStorage.setItem("abuhub_chatack", JSON.stringify(a.slice(0, 50)));
+  if (API_BASE) api("/api/chat-ack", { method: "POST", body: JSON.stringify({ vendor: id }) }).catch(() => null);
+  closeAll();
+  const url = API_BASE
+    ? API_BASE + "/api/vendors/" + id + "/chat?text=" + encodeURIComponent("Hi " + v.name + "! I found you on Abu.Hub.")
+    : "https://wa.me/" + SUPPORT_WA + "?text=" + encodeURIComponent("Hi Abu.Hub! Connect me to " + v.name + ".");
+  window.open(url, "_blank");
+  toast("Chat opened — pay through Abu.Hub checkout to keep your guarantee ✓");
+}
+function protectCheckout() { closeAll(); openCart(); }
+
 /* ----- In-app chat assistant ----- */
 let _chatOpened = false;
 function toggleChat(force) {
@@ -984,7 +1007,7 @@ function openVendor(id){
         </div>
         <div class="flex sm:flex-col gap-2 shrink-0">
           <button onclick="toggleFollow('${v.id}');openVendor('${v.id}')" class="btn-ink !py-3 text-sm whitespace-nowrap">${isF ? "✓ Following" : "+ Follow shop"}</button>
-          <button onclick="toast('Message sent! Makers usually reply within a day ✦','warn')" class="btn-line text-sm whitespace-nowrap">💬 Message</button>
+          <button onclick="vendorChat('${v.id}')" class="btn-line text-sm whitespace-nowrap">💬 Message</button>
         </div>
       </div>
     </div>`;
@@ -1137,7 +1160,7 @@ function openCart(){ closeDrawers(true); renderCartItems(); $("#cartDrawer").cla
 function openWishlist(){ closeDrawers(true); renderWishItems(); $("#wishDrawer").classList.add("open"); showOverlay(); }
 function closeDrawers(silent){ $$(".drawer").forEach(d => d.classList.remove("open")); if (!silent) hideOverlay(); }
 function showModal(id){ closeModals(true); $("#" + id).classList.remove("hidden"); showOverlay(); document.body.style.overflow = "hidden"; }
-function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
+function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal", "protectModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function closeAll(silent){ closeDrawers(true); closeModals(true); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function openAuth(){ showModal("authModal"); renderAuth(); }
 /* ----- Seller-invite landing ----- */
