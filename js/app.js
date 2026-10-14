@@ -92,9 +92,53 @@ const COUPONS = {
 };
 function couponFor(code) { return COUPONS[String(code || "").trim().toUpperCase()]; }
 /* ---------- WhatsApp support ---------- */
-const SUPPORT_WA = "255753026506"; // ← replace with the shop's real WhatsApp number
-const vendorById = (id) => VENDORS.find(v => v.id === id);
-const productById = (id) => PRODUCTS.find(p => p.id === id);
+const SUPPORT_WA = "255753026506"; // shop WhatsApp (Dar es Salaam)
+
+/* ---------- Unified catalog: seed + seller-uploaded products ---------- */
+let ALL_PRODUCTS = [...PRODUCTS];
+const SELLER_SHOPS = {};
+let CLOUD_MINE = [];
+function shopOf() {
+  return localStorage.getItem("abuhub_shop") || ((_authUser || {}).name ? _authUser.name.split(" ")[0] + "'s Shop" : "My Shop");
+}
+function sellerKey() {
+  if (!_authUser?.email) return null;
+  return "s-" + btoa(_authUser.email.toLowerCase()).replace(/[^a-zA-Z0-9]/g, "").slice(0, 10);
+}
+function virtualVendor(key, shop) {
+  const initial = (shop || "M")[0].toUpperCase();
+  return {
+    id: key, name: shop || "Independent maker", tagline: "Independent seller", location: "Marketplace",
+    avatar: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='#191512'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='#FAF6F0' font-family='Georgia'>${initial}</text></svg>`),
+    cover: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80&auto=format&fit=crop",
+    rating: 5.0, reviews: 0, products: 0, sales: "new", verified: false, joined: "2026",
+    story: "An independent seller on Abu.Hub.", virtual: true
+  };
+}
+async function refreshCatalog() {
+  for (const k in SELLER_SHOPS) delete SELLER_SHOPS[k];
+  ALL_PRODUCTS = [...PRODUCTS];
+  CLOUD_MINE = [];
+  if (API_BASE && API_TOKEN) {
+    try {
+      const j = await api("/api/products?mine=1&limit=100");
+      CLOUD_MINE = (j.products || []).map(p => ({ id: p.id, vendorId: "s-" + p.sellerId, name: p.name, category: p.category, price: p.price, oldPrice: null, rating: 5.0, reviews: 0, img: p.image, badge: p.status === "approved" ? "New from maker" : "Pending review", colors: ["Standard"], desc: p.description || p.desc || "", stock: p.stock, status: p.status, _cloud: true, _raw: p }));
+    } catch {}
+  }
+  const locals = JSON.parse(localStorage.getItem("abuhub_myproducts") || "[]");
+  const items = locals.concat(CLOUD_MINE);
+  const byShop = {};
+  items.forEach(p => { (byShop[p.vendorId] = byShop[p.vendorId] || []).push(p); });
+  Object.keys(byShop).forEach(key => {
+    const own = key === sellerKey();
+    const shop = (own ? shopOf() : null) || byShop[key][0].shop || "Independent maker";
+    SELLER_SHOPS[key] = virtualVendor(key, shop);
+    SELLER_SHOPS[key].products = byShop[key].length;
+  });
+  ALL_PRODUCTS = ALL_PRODUCTS.concat(items);
+}
+const vendorById = (id) => VENDORS.find(v => v.id === id) || SELLER_SHOPS[id] || null;
+const productById = (id) => ALL_PRODUCTS.find(p => p.id === id);
 const stars = (r) => "★".repeat(Math.round(r)) + "☆".repeat(5 - Math.round(r));
 
 let cart = JSON.parse(localStorage.getItem("abuhub_cart") || "[]"); // {id, qty, variant}
@@ -553,13 +597,14 @@ const save = () => {
 /* ---------- Routing ---------- */
 function go(view, cat) {
   $$(".view").forEach(v => v.classList.add("hidden"));
-  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about", sell: "view-sell" };
+  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about", sell: "view-sell", seller: "view-seller" };
   $("#" + (map[view] || "view-home")).classList.remove("hidden");
   $("#mobileNav").classList.add("hidden");
   if (cat) { filters.cats = [cat]; syncFilterUI(); }
   if (view === "shop") renderShop();
   if (view === "vendors") renderVendors();
   if (view === "sell") renderSell();
+  if (view === "seller") renderSellerHub();
   $$("#mobileTabs .mtab").forEach(b => b.classList.toggle("on", b.dataset.tab === view || (view === "vendor" && b.dataset.tab === "shop")));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeAll(true);
@@ -577,7 +622,7 @@ function copyCode(){ navigator.clipboard?.writeText("ABUHUB10"); toast("Code ABU
 
 /* ---------- Cards ---------- */
 function productCard(p) {
-  const v = vendorById(p.vendorId);
+  const v = vendorById(p.vendorId) || virtualVendor(p.vendorId, "Independent maker");
   const wished = wishlist.includes(p.id);
   const feat = promoFor(p.id);
   const sale = feat ? `<span class="p-badge sale">★ Featured</span>` : (p.oldPrice ? `<span class="p-badge sale">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : (p.badge ? `<span class="p-badge">${p.badge}</span>` : ""));
@@ -619,7 +664,7 @@ function renderHome() {
   const cats = ["All", ...new Set(PRODUCTS.map(p => p.category))];
   const chipHTML = cats.map(c => `<button onclick="setTrend('${c}')" class="chip ${c === trendCat ? "active" : ""}">${c}</button>`).join("");
   $("#trendFilters").innerHTML = chipHTML; $("#trendFiltersM").innerHTML = chipHTML;
-  const list = pinPromoted((trendCat === "All" ? [...PRODUCTS].sort((a, b) => b.reviews - a.reviews) : PRODUCTS.filter(p => p.category === trendCat))).slice(0, 8);
+  const list = pinPromoted((trendCat === "All" ? [...ALL_PRODUCTS].sort((a, b) => b.reviews - a.reviews) : ALL_PRODUCTS.filter(p => p.category === trendCat))).slice(0, 8);
   $("#trendGrid").innerHTML = list.map(productCard).join("");
   // collections
   $("#collectionGrid").innerHTML = COLLECTIONS.map(c => `
@@ -670,7 +715,7 @@ function hotSearch(term){
 /* ----- Alibaba-style: top ranking ----- */
 function renderRanking(){
   const el = $("#rankRow"); if (!el) return;
-  const top = [...PRODUCTS].sort((a, b) => b.reviews - a.reviews).slice(0, 10);
+  const top = [...ALL_PRODUCTS].sort((a, b) => b.reviews - a.reviews).slice(0, 10);
   el.innerHTML = top.map((p, i) => `
     <div class="rank-card ${i < 3 ? "top3" : ""}" onclick="openProduct('${p.id}')">
       <span class="rank-num">${i + 1}</span>
@@ -691,7 +736,7 @@ function saleEnd(){
 }
 function renderDeals(){
   const u = $("#under50Grid"); if (!u) return;
-  u.innerHTML = PRODUCTS.filter(p => p.price < 50).slice(0, 4).map(p => `
+  u.innerHTML = ALL_PRODUCTS.filter(p => p.price < 50).slice(0, 4).map(p => `
     <div class="rounded-2xl overflow-hidden bg-white/10 border border-white/15 cursor-pointer hover:bg-white/20 transition" onclick="openProduct('${p.id}')">
       <img loading="lazy" src="${p.img}" class="w-full h-24 object-cover" alt="${p.name}" />
       <div class="p-2.5"><p class="text-[12px] font-semibold line-clamp-1">${p.name}</p><strong class="text-[13px] text-gold">${money(p.price)}</strong></div>
@@ -811,7 +856,8 @@ function protectContinue() {
   a.unshift(ack); localStorage.setItem("abuhub_chatack", JSON.stringify(a.slice(0, 50)));
   if (API_BASE) api("/api/chat-ack", { method: "POST", body: JSON.stringify({ vendor: id }) }).catch(() => null);
   closeAll();
-  const url = API_BASE
+  const isVirtual = id && id.startsWith("s-");
+  const url = (API_BASE && !isVirtual)
     ? API_BASE + "/api/vendors/" + id + "/chat?text=" + encodeURIComponent("Hi " + v.name + "! I found you on Abu.Hub.")
     : "https://wa.me/" + SUPPORT_WA + "?text=" + encodeURIComponent("Hi Abu.Hub! Connect me to " + v.name + ".");
   window.open(url, "_blank");
@@ -841,7 +887,7 @@ function pinPromoted(list) {
   return [...list].sort((a, b) => ((promoFor(b.id) ? 1 : 0) - (promoFor(a.id) ? 1 : 0)));
 }
 function openPromote(pid, vendorId) {
-  const list = vendorId ? PRODUCTS.filter(p => p.vendorId === vendorId) : PRODUCTS;
+  const list = vendorId ? ALL_PRODUCTS.filter(p => p.vendorId === vendorId) : ALL_PRODUCTS;
   const opts = list.map(p => `<option value="${p.id}" ${p.id === pid ? "selected" : ""}>${p.name} — ${money(p.price)}</option>`).join("");
   $("#promoteBody").innerHTML = `
     <div class="grid gap-2.5">
@@ -873,6 +919,159 @@ async function submitPromote() {
   if (API_BASE && API_TOKEN) api("/api/promotions", { method: "POST", body: JSON.stringify({ productId, shelf, weeks, email }) }).catch(() => null);
   closeAll(); refreshDynamic();
   toast(`“${productById(productId).name}” pinned on ${shelf} for ${weeks}wk · invoice $${fee} sent to ${email} ✓`);
+}
+
+/* ----- Seller hub: dashboard + upload flow ----- */
+let _editingId = null, _upImg = "", _sellerTab = "products";
+function sellerTab(t) {
+  _sellerTab = t;
+  $("#sellerProducts").classList.toggle("hidden", t !== "products");
+  $("#sellerForm").classList.toggle("hidden", t !== "add");
+  $("#tabBtnProducts").className = "px-5 py-3 font-semibold text-[15px] border-b-2 -mb-px " + (t === "products" ? "border-ink" : "border-transparent text-muted");
+  $("#tabBtnAdd").className = "px-5 py-3 font-semibold text-[15px] border-b-2 -mb-px " + (t === "add" ? "border-ink" : "border-transparent text-muted");
+}
+async function renderSellerHub() {
+  const gate = $("#sellerGate"), dash = $("#sellerDash");
+  if (!_authUser) {
+    gate.innerHTML = `<div class="rounded-[28px] border border-line bg-white p-10 text-center max-w-lg mx-auto">
+      <p class="text-5xl">🏪</p><h3 class="font-display text-3xl mt-4">Sellers sign in here</h3>
+      <p class="text-muted text-sm mt-2">One account for shopping and selling.</p>
+      <button onclick="openAuth()" class="btn-ink mt-5">Sign in / Create account →</button></div>`;
+    dash.classList.add("hidden"); return;
+  }
+  gate.innerHTML = ""; dash.classList.remove("hidden");
+  $("#sellerShopName").textContent = shopOf().replace(/'s Shop$/, "");
+  let stats = { products: 0, pending: 0, sales: 0, gross: 0, commission: 0 };
+  const key = sellerKey();
+  const locals = JSON.parse(localStorage.getItem("abuhub_myproducts") || "[]");
+  if (API_BASE && API_TOKEN) {
+    try { Object.assign(stats, await api("/api/seller/stats")); } catch {}
+  } else {
+    const orders = JSON.parse(localStorage.getItem("abuhub_orders") || "[]");
+    let sales = 0, gross = 0;
+    orders.forEach(o => (o.items || []).forEach(l => {
+      const p = ALL_PRODUCTS.find(x => x.id === l.id);
+      if (p && p.vendorId === key) { sales += l.qty; gross += p.price * l.qty; }
+    }));
+    stats = { products: locals.length, pending: 0, sales, gross, commission: gross * 0.08 };
+  }
+  $("#sellerStats").innerHTML = [
+    ["Products live", stats.products], ["Pending review", stats.pending || 0],
+    ["Units sold", stats.sales || 0], ["Earnings (92%)", money((stats.gross || 0) * 0.92)]
+  ].map(([l, v]) => `<div class="statbox"><strong>${v}</strong><span>${l}</span></div>`).join("");
+  const items = locals.concat(CLOUD_MINE);
+  $("#sellerProducts").innerHTML = items.map(p => `
+    <article class="p-card">
+      <div class="p-img" onclick="openProduct('${p.id}')">
+        <img loading="lazy" src="${p.img}" alt="${p.name}" />
+        <span class="p-badge ${p.status === "approved" ? "" : "sale"}">${p.status === "approved" ? (p.badge || "Live") : "⏳ Pending"}</span>
+      </div>
+      <div class="p-4 flex flex-col gap-1">
+        <h3 class="font-display text-[16px] line-clamp-1">${p.name}</h3>
+        <p class="text-[13px] text-muted">${p.category} · stock ${p.stock}</p>
+        <div class="flex items-center gap-2 mt-1">
+          <strong>${money(p.price)}</strong>
+          <span class="ml-auto flex gap-1.5">
+            <button onclick="editProduct('${p.id}')" class="text-xs font-bold bg-cream2 rounded-full px-3 py-1.5 hover:bg-ink hover:text-cream transition">Edit</button>
+            <button onclick="delProduct('${p.id}')" class="text-xs font-bold bg-red-50 text-red-700 rounded-full px-3 py-1.5 hover:bg-red-600 hover:text-white transition">Delete</button>
+          </span>
+        </div>
+      </div>
+    </article>`).join("") || `<div class="col-span-full text-center py-14 bg-white border border-line rounded-[24px]">
+      <p class="text-5xl">📦</p><p class="font-display text-2xl mt-3">No products yet</p>
+      <p class="text-sm text-muted">List your first piece — it takes a minute.</p>
+      <button onclick="sellerTab('add')" class="btn-ink mt-4">+ Add product</button></div>`;
+  sellerTab(_sellerTab);
+}
+function resetUpload() {
+  _editingId = null; _upImg = "";
+  ["upName", "upPrice", "upStock", "upCat", "upDesc"].forEach(id => $("#" + id).value = id === "upStock" ? 10 : "");
+  $("#upFile").value = ""; $("#upPreview").classList.add("hidden");
+  $("#upPhotoMsg").textContent = "JPG/PNG, max 2MB. Auto-compressed on device.";
+  $("#upTitle").textContent = "List a new product";
+}
+function showUpPreview(src) { const im = $("#upPreview"); im.src = src; im.classList.remove("hidden"); }
+function upPhoto(input) {
+  const f = input.files[0]; if (!f) return;
+  const msg = $("#upPhotoMsg");
+  if (!f.type.startsWith("image/")) { msg.textContent = "That file is not an image."; return; }
+  if (API_BASE) {
+    const fd = new FormData(); fd.append("photo", f);
+    msg.textContent = "Uploading…";
+    fetch(API_BASE + "/api/media/direct", { method: "POST", body: fd }).then(r => r.json()).then(j => {
+      if (!j.url) throw 0;
+      _upImg = API_BASE + j.url; showUpPreview(_upImg); msg.textContent = "Uploaded ✓";
+    }).catch(() => { msg.textContent = "Upload failed — try a smaller photo (max 2MB)."; });
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    const sc = Math.min(1, 1200 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(img.src);
+    _upImg = c.toDataURL("image/jpeg", 0.82);
+    showUpPreview(_upImg);
+    msg.textContent = `Photo ready ✓ (~${Math.round(_upImg.length / 1365)} KB, stored on device)`;
+  };
+  img.onerror = () => { msg.textContent = "Could not read that photo."; };
+  img.src = URL.createObjectURL(f);
+}
+async function submitUpload(e) {
+  e.preventDefault();
+  const errBox = $("#upErr");
+  const err = (m) => { errBox.textContent = m; errBox.classList.remove("hidden"); window.scrollTo({ top: 0 }); };
+  errBox.classList.add("hidden");
+  const name = $("#upName").value.trim(), price = Number($("#upPrice").value),
+    stock = Math.floor(Number($("#upStock").value)), cat = $("#upCat").value, desc = $("#upDesc").value.trim();
+  if (name.length < 3) return err("Give your product a name (3+ characters).");
+  if (!(price > 0)) return err("Set a price above $0.");
+  if (!cat) return err("Choose a category.");
+  if (!desc) return err("Add a short description.");
+  if (!_upImg) return err("Add a photo first.");
+  const btn = $("#upSubmit"); btn.textContent = "Saving…"; btn.disabled = true;
+  try {
+    if (API_BASE && API_TOKEN) {
+      const payload = { name, price, stock: stock >= 0 ? stock : 0, category: cat, description: desc, image: _upImg };
+      if (_editingId) await api("/api/products/" + _editingId, { method: "PUT", body: JSON.stringify(payload) });
+      else await api("/api/products", { method: "POST", body: JSON.stringify(payload) });
+      toast(_editingId ? "Product updated ✓" : "Saved — pending review, live after approval ✓");
+    } else {
+      const all = JSON.parse(localStorage.getItem("abuhub_myproducts") || "[]");
+      if (_editingId) {
+        const p = all.find(x => x.id === _editingId);
+        if (p) Object.assign(p, { name, price, stock, category: cat, desc, img: _upImg });
+      } else {
+        all.unshift({ id: "L-" + Date.now().toString(36).toUpperCase(), vendorId: sellerKey(), shop: shopOf(), name, category, price, oldPrice: null, rating: 5.0, reviews: 0, img: _upImg, badge: "New from maker", colors: ["Standard"], desc, stock: stock >= 0 ? stock : 0, status: "approved" });
+      }
+      localStorage.setItem("abuhub_myproducts", JSON.stringify(all));
+      toast("Live on the storefront ✓ (demo auto-approves; admin review when API is live)");
+    }
+    resetUpload(); await refreshCatalog(); renderSellerHub(); refreshDynamic(); sellerTab("products");
+  } catch (ex) { err(ex.message || "Could not save — try again."); }
+  btn.textContent = "Save product →"; btn.disabled = false;
+}
+function editProduct(id) {
+  const p = ALL_PRODUCTS.find(x => x.id === id); if (!p) return;
+  if (p._cloud && p.status !== "approved") toast("Pending review — editing sends it back to the queue.", "warn");
+  _editingId = id; _upImg = p.img;
+  $("#upName").value = p.name; $("#upPrice").value = p.price; $("#upStock").value = p.stock ?? 10;
+  $("#upCat").value = p.category; $("#upDesc").value = p.desc;
+  showUpPreview(p.img); $("#upTitle").textContent = "Edit product";
+  sellerTab("add"); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+async function delProduct(id) {
+  const p = ALL_PRODUCTS.find(x => x.id === id); if (!p) return;
+  if (!confirm(`Delete “${p.name}” permanently?`)) return;
+  if (API_BASE && API_TOKEN && p._cloud) {
+    try { await api("/api/products/" + id, { method: "DELETE" }); }
+    catch (ex) { toast(ex.message, "warn"); return; }
+  } else {
+    localStorage.setItem("abuhub_myproducts", JSON.stringify(JSON.parse(localStorage.getItem("abuhub_myproducts") || "[]").filter(x => x.id !== id)));
+  }
+  await refreshCatalog(); renderSellerHub(); refreshDynamic();
+  toast("Product deleted.");
 }
 
 /* ----- In-app chat assistant ----- */
@@ -999,7 +1198,7 @@ function toggleDropship(){ filters.dropship = !filters.dropship; syncFilterUI();
 function onHeaderSearch(v){ filters.q = v; if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
 
 function filteredProducts() {
-  let list = [...PRODUCTS];
+  let list = [...ALL_PRODUCTS];
   if (filters.q) { const q = filters.q.toLowerCase(); list = list.filter(p => (p.name + p.category + vendorById(p.vendorId).name).toLowerCase().includes(q)); }
   if (filters.cats.length) list = list.filter(p => filters.cats.includes(p.category));
   list = list.filter(p => p.price <= filters.max && p.rating >= filters.minRating);
@@ -1050,7 +1249,7 @@ function toggleFollow(id){
 }
 function openVendor(id){
   const v = vendorById(id); if (!v) return;
-  const prods = PRODUCTS.filter(p => p.vendorId === id);
+  const prods = ALL_PRODUCTS.filter(p => p.vendorId === id);
   const isF = followed.includes(id);
   $("#vendorHero").innerHTML = `
     <div class="rounded-[28px] overflow-hidden border border-line bg-white">
@@ -1080,10 +1279,10 @@ let modalQty = 1, modalVariant = null;
 function openProduct(id){
   const p = productById(id); if (!p) return;
   pushRecent(id);
-  const v = vendorById(p.vendorId);
+  const v = vendorById(p.vendorId) || virtualVendor(p.vendorId, "Independent maker");
   modalQty = 1; modalVariant = p.colors[0];
   const wished = wishlist.includes(p.id);
-  const related = PRODUCTS.filter(x => x.id !== p.id && (x.category === p.category || x.vendorId === p.vendorId)).slice(0, 4);
+  const related = ALL_PRODUCTS.filter(x => x.id !== p.id && (x.category === p.category || x.vendorId === p.vendorId)).slice(0, 4);
   $("#productCard").innerHTML = `
     <div class="grid md:grid-cols-2">
       <div class="relative bg-[#F3ECE1] min-h-[320px] md:min-h-[540px]">
@@ -1162,9 +1361,11 @@ function setQty(idx, d){
   save(); renderCartItems();
 }
 function removeLine(idx){ cart.splice(idx, 1); save(); renderCartItems(); }
-function cartSubtotal(){ return cart.reduce((s, l) => s + productById(l.id).price * l.qty, 0); }
+function cartSubtotal(){ return cart.reduce((s, l) => { const p = productById(l.id); return p ? s + p.price * l.qty : s; }, 0); }
 
 function renderCartItems(){
+  const pruned = cart.filter(l => productById(l.id));
+  if (pruned.length !== cart.length) { cart = pruned; save(); }
   const box = $("#cartItems");
   if (!cart.length) { box.innerHTML = `<div class="text-center py-12"><p class="text-5xl">🧺</p><p class="font-display text-2xl mt-4">Your basket is empty</p><p class="text-muted text-sm mt-1">Beautiful handmade things await.</p><button onclick="closeAll();go('shop')" class="btn-ink mt-5">Start shopping</button></div>`; }
   else box.innerHTML = cart.map((l, i) => {
@@ -1276,7 +1477,8 @@ function renderAuth(){
       </div>
       <p class="f-label mt-4">Your orders (${orders.length})</p>
       <div class="max-h-40 overflow-auto space-y-2">${orders.map(o => `<div class="flex justify-between text-[13px] bg-white border border-line rounded-xl px-3 py-2"><span><strong>${o.ref}</strong> · ${o.items.length} items</span><strong>$${Number(o.total).toFixed(2)}</strong></div>`).join("") || `<p class="text-sm text-muted">No orders yet — they’ll appear here after checkout.</p>`}</div>
-      <button onclick="logout()" class="btn-line w-full mt-4">Sign out</button>`;
+      <button onclick="closeAll();go('seller')" class="btn-ink w-full mt-3">🏪 Open seller hub →</button>
+      <button onclick="logout()" class="btn-line w-full mt-2">Sign out</button>`;
     return;
   }
   const isSignup = _authMode === "signup";
@@ -1301,7 +1503,7 @@ function simpleLogin(e, isSignup){
     _authUser = u;
     localStorage.setItem("abuhub_user", JSON.stringify(_authUser));
     if (checkoutData) checkoutData.email = _authUser.email;
-    updateAccountUI(); closeAll(); toast(`Karibu, ${_authUser.name.split(" ")[0]} ✓`);
+    updateAccountUI(); closeAll(); refreshCatalog().then(() => refreshDynamic()); toast(`Karibu, ${_authUser.name.split(" ")[0]} ✓`);
   };
   // Cloud auth when API configured — falls back to on-device accounts
   if (API_BASE) {
@@ -1341,7 +1543,7 @@ function setAuthMode(m) {
 async function logout(){
   _authUser = null; localStorage.setItem("abuhub_user", JSON.stringify(null));
   API_TOKEN = ""; localStorage.removeItem("abuhub_token");
-  updateAccountUI(); renderAuth(); toast("Signed out.");
+  updateAccountUI(); renderAuth(); refreshCatalog().then(() => refreshDynamic()); toast("Signed out.");
 }
 function submitSeller(e){
   e.preventDefault();
@@ -1436,7 +1638,7 @@ function renderCheckout(){
         <div>${body}</div>
         <div class="bg-white border border-line rounded-2xl p-4 h-fit">
           <p class="text-xs font-bold uppercase tracking-widest text-muted mb-3">Order summary</p>
-          <div class="space-y-2.5 max-h-48 overflow-auto">${cart.map(l => { const p = productById(l.id); return `<div class="flex gap-2 items-center"><img src="${p.img}" class="w-10 h-12 rounded-lg object-cover" /><div class="min-w-0"><p class="text-xs font-semibold line-clamp-1">${p.name}</p><p class="text-xs text-muted">×${l.qty} · ${l.variant}</p></div><strong class="ml-auto text-xs">${money(p.price * l.qty)}</strong></div>`; }).join("")}</div>
+          <div class="space-y-2.5 max-h-48 overflow-auto">${cart.filter(l => productById(l.id)).map(l => { const p = productById(l.id); return `<div class="flex gap-2 items-center"><img src="${p.img}" class="w-10 h-12 rounded-lg object-cover" /><div class="min-w-0"><p class="text-xs font-semibold line-clamp-1">${p.name}</p><p class="text-xs text-muted">×${l.qty} · ${l.variant}</p></div><strong class="ml-auto text-xs">${money(p.price * l.qty)}</strong></div>`; }).join("")}</div>
           <div class="border-t border-line mt-3 pt-3 space-y-1 text-[13px]">
             <div class="flex justify-between"><span class="text-muted">Subtotal</span><strong>${money(sub)}</strong></div>
             <div class="flex justify-between"><span class="text-muted">Shipping</span><strong>${ship === 0 ? "FREE" : money(ship)}</strong></div>
@@ -1519,7 +1721,7 @@ function pendingOrder(total, method){
   completeOrder(orderRef(), total, method + " — VERIFY in dashboard before shipping");
 }
 function completeOrder(ref, total, method){
-  const lineItems = cart.map(l => ({ id: l.id, qty: l.qty, variant: l.variant }));
+  const lineItems = cart.filter(l => productById(l.id)).map(l => ({ id: l.id, qty: l.qty, variant: l.variant }));
   // Mirror to cloud API when signed in + configured (never blocks checkout)
   if (API_BASE && API_TOKEN) {
     api("/api/orders", { method: "POST", headers: { "Idempotency-Key": ref }, body: JSON.stringify({ items: lineItems, total, method, ref, contact: checkoutData }) }).catch(() => null);
@@ -1576,7 +1778,9 @@ document.addEventListener("click", (e) => { if (e.target.classList?.contains("mo
 })();
 
 /* init */
-renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
+refreshCatalog().then(() => {
+  renderHome(); syncFilterUI(); renderShop(); renderVendors(); renderCartItems(); renderWishItems(); updateBadges(); updateAccountUI(); updateShipTexts();
+});
 $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
 buildCurrSelectors();
 $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
