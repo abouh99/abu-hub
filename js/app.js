@@ -105,15 +105,47 @@ function sellerKey() {
   if (!_authUser?.email) return null;
   return "s-" + btoa(_authUser.email.toLowerCase()).replace(/[^a-zA-Z0-9]/g, "").slice(0, 10);
 }
-function virtualVendor(key, shop) {
+function virtualVendor(key, shop, tier) {
   const initial = (shop || "M")[0].toUpperCase();
   return {
     id: key, name: shop || "Independent maker", tagline: "Independent seller", location: "Marketplace",
     avatar: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='#191512'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='#FAF6F0' font-family='Georgia'>${initial}</text></svg>`),
     cover: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80&auto=format&fit=crop",
-    rating: 5.0, reviews: 0, products: 0, sales: "new", verified: false, joined: "2026",
+    rating: 5.0, reviews: 0, products: 0, sales: "new", verified: false, joined: "2026", tier: tier || null,
     story: "An independent seller on Abu.Hub.", virtual: true
   };
+}
+/* premium tiers: local sub or cloud map */
+let CLOUD_TIERS = {};
+function myTier() {
+  try {
+    const s = JSON.parse(localStorage.getItem("abuhub_sub") || "null");
+    if (s && s.ends > Date.now()) return s.tier;
+  } catch {}
+  const own = CLOUD_MINE[0]?.sellerId;
+  if (own && CLOUD_TIERS["s-" + own]) return CLOUD_TIERS["s-" + own].tier;
+  const mine = Object.keys(SELLER_SHOPS).find(k => k === sellerKey());
+  if (mine && CLOUD_TIERS[mine]) return CLOUD_TIERS[mine].tier;
+  return null;
+}
+async function fetchTiers() {
+  if (!API_BASE) return;
+  try {
+    const j = await (await fetch(API_BASE + "/api/sellers/tiers")).json();
+    CLOUD_TIERS = j.tiers || {};
+  } catch {}
+}
+async function subscribeTier(tier) {
+  if (!_authUser) { openAuth(); toast("Sign in first, then pick a plan.", "warn"); return; }
+  const fee = tier === "elite" ? 29 : 9;
+  const rec = { tier, fee, ends: Date.now() + 30 * 864e5, date: new Date().toISOString() };
+  localStorage.setItem("abuhub_sub", JSON.stringify(rec));
+  if (API_BASE && API_TOKEN) api("/api/subscriptions", { method: "POST", body: JSON.stringify({ tier }) }).catch(() => null);
+  await refreshCatalog(); renderSell(); refreshDynamic();
+  toast(`${tier === "elite" ? "Elite" : "Pro"} activated — invoice $${fee}/mo sent ✓ Badge live on your shop.`);
+}
+function proBadge(v) {
+  return v.tier ? `<span class="text-[11px] font-bold text-[#C8A15A]">◆ ${String(v.tier).toUpperCase()}</span>` : "";
 }
 async function refreshCatalog() {
   for (const k in SELLER_SHOPS) delete SELLER_SHOPS[k];
@@ -132,7 +164,12 @@ async function refreshCatalog() {
   Object.keys(byShop).forEach(key => {
     const own = key === sellerKey();
     const shop = (own ? shopOf() : null) || byShop[key][0].shop || "Independent maker";
-    SELLER_SHOPS[key] = virtualVendor(key, shop);
+    let tier = null;
+    if (own) {
+      try { const s = JSON.parse(localStorage.getItem("abuhub_sub") || "null"); if (s && s.ends > Date.now()) tier = s.tier; } catch {}
+      if (!tier && CLOUD_TIERS[key]) tier = CLOUD_TIERS[key].tier;
+    } else if (CLOUD_TIERS[key]) tier = CLOUD_TIERS[key].tier;
+    SELLER_SHOPS[key] = virtualVendor(key, shop, tier);
     SELLER_SHOPS[key].products = byShop[key].length;
   });
   ALL_PRODUCTS = ALL_PRODUCTS.concat(items);
@@ -395,6 +432,80 @@ Object.assign(I18N.sw, {
   "Your shop here? Join free →": "Duka lako hapa? Jiunge bure →",
   "Signed out.": "Umetoka.", "Saved to wishlist ♥": "Imehifadhiwa ♥", "Removed from wishlist": "Imeondolewa kwenye orodha"
 });
+/* --- dictionary: tech wings, seller hub, sell page, promote, ledger --- */
+Object.assign(I18N.sw, {
+  "Artisan ▾": "Ufundi ▾", "Tech Hub ▾": "Teknolojia ▾",
+  "Phones & Gadgets": "Simu na Vifaa", "Computers & PCs": "Kompyuta", "Gaming & Consoles": "Michezo",
+  "📱 Phones & Gadgets": "📱 Simu na Vifaa", "💻 Computers & PCs": "💻 Kompyuta", "🎮 Gaming & Consoles": "🎮 Michezo",
+  "🎮 Gaming": "🎮 Michezo",
+  "⚡ Hardware specs": "⚡ Vipimo vya kifaa", "RAM: any": "RAM: zote", "Storage: any": "Hifadhi: zote",
+  "Condition: any": "Hali: zote", "New": "Mpya", "Refurbished": "Iliyokarabatiwa",
+  "Seller hub": "Kituo cha muuzaji", "My products": "Bidhaa zangu", "+ Add product": "+ Weka bidhaa",
+  "Products live": "Bidhaa mtandaoni", "Pending review": "Inasubiri uhakiki", "Units sold": "Viliouzwa",
+  "Earnings (92%)": "Mapato (92%)", "List a new product": "Orodhesha bidhaa mpya",
+  "One product per submission · goes live after review (instant in demo).": "Bidhaa moja kwa kuwasilisha · inaenda mtandaoni baada ya uhakiki.",
+  "Photo *": "Picha *", "JPG/PNG, max 2MB. Auto-compressed on device.": "JPG/PNG, max MB 2.",
+  "Product name *": "Jina la bidhaa *", "Price (USD) *": "Bei (USD) *", "Stock *": "Akiba *",
+  "Category *": "Kategoria *", "Choose…": "Chagua…", "Description *": "Maelezo *",
+  "⚡ Technical specifications": "⚡ Vipimo vya kiufundi", "❋ Artisan details": "❋ Maelezo ya ufundi",
+  "Save product →": "Hifadhi bidhaa →", "Cancel": "Ghairi", "No products yet": "Hakuna bidhaa bado",
+  "List your first piece — it takes a minute.": "Orodhesha kipande chako cha kwanza.",
+  "Edit": "Hariri", "Delete": "Futa", "Sellers sign in here": "Wauzaji ingieni hapa",
+  "One account for shopping and selling.": "Akaunti moja kwa kununua na kuuza.",
+  "Sign in / Create account →": "Ingia / Fungua akaunti →", "🏪 Open seller hub →": "🏪 Fungua kituo cha muuzaji →",
+  "New from maker": "Mpya kutoka kwa fundi", "Live": "Mtandaoni",
+  "Ships from Abu.Hub hub in 3–6 days, tracked.": "Inatoka kituo cha Abu.Hub siku 3–6.",
+  "Sell on Abu.Hub · 0 listing fees": "Uza Abu.Hub · ada 0",
+  "Your craft. Our": "Ufundi wako. Wateja wetu", "190,000 shoppers.": "190,000.",
+  "Start application →": "Anza ombi →", "Copy my invite link": "Nakili kiungo changu",
+  "Earnings calculator": "Kikokotoo cha mapato", "What would you keep?": "Utabaki na kipi?",
+  "Monthly sales:": "Mauzo ya mwezi:", "You keep · 92%": "Unabaki · 92%", "Typical market · 70%": "Soko la kawaida · 70%",
+  "Invite & earn": "Alika na upate", "Bring a maker, both win": "Mlete fundi, mshinde wote",
+  "Share your link — makers who join with your code get fast-track review, and you get 0% commission for 30 days per joined seller.": "Shiriki kiungo chako — wanaojiunga na msimbo wako wanahakikiwa haraka, nawe unapata 0% kamisheni siku 30.",
+  "Your code:": "Msimbo wako:", "Joined via you:": "Waliojiunga kupitia wewe:",
+  "Apply as a seller →": "Omba kama muuzaji →",
+  "Plans that grow with you": "Mipango inayokua nawe",
+  "Every plan keeps the 8% max commission. Pro unlocks the badge + analytics.": "Kila mpango unabaki na 8% kamisheni. Pro inafungua beji + takwimu.",
+  "Standard": "Kawaida", "Unlimited listings": "Uorodheshaji usio na kikomo", "Daily payouts": "Malipo ya kila siku",
+  "Basic stats": "Takwimu za msingi", "Start free →": "Anza bure →", "POPULAR": "Maarufu",
+  "Everything in Standard": "Vyote vya Kawaida", "PRO badge on shop": "Beji ya PRO dukani",
+  "Advanced sales ledger": "Leja ya mauzo ya hali ya juu", "Priority review": "Uhakiki wa kipaumbele",
+  "Go Pro →": "Kuwa Pro →", "Everything in Pro": "Vyote vya Pro", "Homepage feature slot": "Nafasi ya ukurasa mkuu",
+  "Dedicated manager": "Meneja maalum", "0% promo fees": "0% ada za matangazo", "Go Elite →": "Kuwa Elite →",
+  "Seller questions, answered": "Maswali ya wauzaji, yamejibiwa", "What does it cost?": "Inagharimu kiasi gani?",
+  "$0 listing fees. 8% max commission only when you sell. Payouts daily.": "$0 ada. 8% kamisheni unapouza tu. Malipo kila siku.",
+  "How do I get paid?": "Nitalipwaje?",
+  "Daily payouts to bank or mobile money (M-Pesa, Airtel). Track everything from your inbox.": "Malipo ya kila siku kwa benki au pesa za simu. Fuatilia kila kitu.",
+  "Can resellers dropship my goods?": "Je, wauzaji wanaweza kudondosha bidhaa zangu?",
+  "Yes — tick “I want dropship resellers” in your application. You ship direct in unbranded packaging and keep your wholesale margin.": "Ndiyo — weka alama unapoomba. Unatuma moja kwa moja bila chapa na unabaki na faida.",
+  "Who can join?": "Nani anaweza kujiunga?",
+  "Independent makers, artisans and small brands with original goods. Every shop is reviewed within 24 hours.": "Mafundi huru na chapa ndogo zenye bidhaa asilia. Kila duka linahakikiwa ndani ya saa 24.",
+  "Vendor advertising · flat fee": "Matangazo ya muuzaji · ada", "Pin it where shoppers look": "Ibandike wanunuzi wanapoangalia",
+  "1 week": "wiki 1", "2 weeks": "wiki 2", "4 weeks": "wiki 4",
+  "Billing email *": "Barua pepe ya malipo *", "Pinning fee": "Ada ya kubandika",
+  "Pay fee → pin my product": "Lipa ada → bandika bidhaa",
+  "Invoice + receipt by email. Pinning starts on payment, refundable in 24h.": "Ankara na risiti kwa barua pepe. Kubandika kunaanza ukilipa.",
+  "Advanced sales ledger is a Pro feature": "Leja ya hali ya juu ni ya Pro",
+  "Per-order commission breakdown, payouts and history — plus the ◆ badge.": "Mgawanyo wa kamisheni, malipo na historia — pamoja na beji.",
+  "See Pro $9/mo →": "Tazama Pro $9/mwezi →", "Sales ledger": "Leja ya mauzo",
+  "Cart": "Kikapu", "Account": "Akaunti",
+  "📦 Track order": "📦 Fuatilia agizo", "🚚 Shipping": "🚚 Usafirishaji", "🏷️ Discounts": "🏷️ Punguzo", "💬 Human": "💬 Mtu"
+});
+Object.assign(I18N.fr, {
+  "Artisan ▾": "Artisanat ▾", "Tech Hub ▾": "Tech ▾",
+  "Phones & Gadgets": "Téléphones & Gadgets", "Computers & PCs": "Ordinateurs & PC", "Gaming & Consoles": "Jeux & Consoles",
+  "📱 Phones & Gadgets": "📱 Téléphones & Gadgets", "💻 Computers & PCs": "💻 Ordinateurs & PC", "🎮 Gaming & Consoles": "🎮 Jeux & Consoles",
+  "🎮 Gaming": "🎮 Jeux",
+  "⚡ Hardware specs": "⚡ Caractéristiques", "RAM: any": "RAM : tous", "Storage: any": "Stockage : tous",
+  "Condition: any": "État : tous", "New": "Neuf", "Refurbished": "Reconditionné",
+  "Seller hub": "Espace vendeur", "My products": "Mes articles", "+ Add product": "+ Ajouter",
+  "Products live": "Articles en ligne", "Pending review": "En révision", "Units sold": "Vendus",
+  "Earnings (92%)": "Gains (92%)", "Cancel": "Annuler", "Edit": "Modifier", "Delete": "Supprimer",
+  "Save product →": "Enregistrer →", "Sign in / Create account →": "Se connecter / Créer un compte →",
+  "Cart": "Panier", "Account": "Compte",
+  "📦 Track order": "📦 Suivre commande", "🚚 Shipping": "🚚 Livraison", "🏷️ Discounts": "🏷️ Promos", "💬 Human": "💬 Humain",
+  "Start selling — it’s free": "Commencez à vendre — c'est gratuit"
+});
 Object.assign(I18N.fr, {
   "The marketplace": "Le marché", "Shop all goods": "Tous les articles", "☰ Filters": "☰ Filtres",
   "Filters": "Filtres", "Clear all": "Tout effacer", "Search": "Rechercher", "Try ‘lamp’, ‘pearl’…": "Essayez ‘lampe’, ‘perle’…",
@@ -635,7 +746,8 @@ function productCard(p) {
       <button class="p-quick" onclick="event.stopPropagation();quickAdd('${p.id}')">+ Quick add · ${money(p.price)}</button>
     </div>
     <div class="p-4 sm:p-5 flex flex-col gap-1.5 flex-1">
-      <button onclick="openVendor('${v.id}')" class="text-[12px] font-semibold text-[#BC5A28] uppercase tracking-wider text-left hover:underline">${v.name} ✓</button>
+      <button onclick="openVendor('${v.id}')" class="text-[12px] font-semibold text-[#BC5A28] uppercase tracking-wider text-left hover:underline">${v.name}${v.verified ? " ✓" : ""}</button>
+      ${v.tier ? `<span class="text-[11px] font-bold text-[#C8A15A]">◆ ${String(v.tier).toUpperCase()} SELLER</span>` : ""}
       ${v.dropship ? `<span class="text-[11px] font-bold text-[#0AA5C2]">📦 SHIPS FROM MAKER</span>` : ""}
       <h3 onclick="openProduct('${p.id}')" class="font-display text-[16px] sm:text-[18px] leading-snug cursor-pointer hover:text-[#BC5A28] line-clamp-1">${p.name}</h3>
       <div class="flex items-center gap-1.5 text-[13px]"><span class="text-[#C8A15A] tracking-tight">${stars(p.rating)}</span><span class="text-muted">${p.rating} (${p.reviews})</span></div>
@@ -983,6 +1095,33 @@ async function renderSellerHub() {
       <p class="text-sm text-muted">List your first piece — it takes a minute.</p>
       <button onclick="sellerTab('add')" class="btn-ink mt-4">+ Add product</button></div>`;
   sellerTab(_sellerTab);
+  const tier = myTier();
+  const led = $("#sellerLedger");
+  if (!tier) {
+    led.innerHTML = `<div class="rounded-[24px] border border-dashed border-gold bg-[#C8A15A]/10 p-6 text-center">
+      <p class="font-display text-xl">🔒 Advanced sales ledger is a Pro feature</p>
+      <p class="text-sm text-muted mt-1">Per-order commission breakdown, payouts and history — plus the ◆ badge.</p>
+      <button onclick="go('sell')" class="btn-ink mt-4 !py-3 text-sm">See Pro $9/mo →</button></div>`;
+    return;
+  }
+  let rows = [];
+  if (API_BASE && API_TOKEN) {
+    try { rows = (await api("/api/seller/transactions")).transactions || []; } catch {}
+  } else {
+    const orders = JSON.parse(localStorage.getItem("abuhub_orders") || "[]");
+    const key = sellerKey();
+    orders.forEach(o => (o.items || []).forEach(l => {
+      const p = ALL_PRODUCTS.find(x => x.id === l.id);
+      if (p && p.vendorId === key) {
+        const gross = p.price * l.qty;
+        rows.push({ orderRef: o.ref, productId: p.id, gross, commission: gross * 0.08, net: gross * 0.92, date: o.date });
+      }
+    }));
+  }
+  led.innerHTML = `<div class="rounded-[24px] bg-white border border-line p-6">
+    <div class="flex items-center justify-between"><h3 class="font-display text-2xl">Sales ledger <span class="text-xs font-sans font-bold text-[#C8A15A] align-middle">◆ ${tier.toUpperCase()}</span></h3></div>
+    ${rows.map(t => `<div class="flex justify-between text-[13px] border-b border-line py-2.5 last:border-0"><span><strong>${t.orderRef}</strong> · ${(productById(t.productId) || {}).name || t.productId}</span><span class="text-right">+${money(t.net)} <span class="text-muted">(−${money(t.commission)} fee)</span></span></div>`).join("") || `<p class="text-sm text-muted mt-2">No sales yet — share your shop link!</p>`}
+  </div>`;
 }
 function resetUpload() {
   _editingId = null; _upImg = "";
@@ -1309,7 +1448,7 @@ function openVendor(id){
       <div class="p-6 sm:p-8 flex flex-col sm:flex-row gap-5 sm:items-center">
         <img src="${v.avatar}" class="w-20 h-20 rounded-3xl object-cover -mt-14 border-4 border-white shadow" alt="" />
         <div class="flex-1">
-          <div class="flex flex-wrap items-center gap-2"><h2 class="font-display text-3xl">${v.name}</h2>${v.verified ? `<span class="text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1">✓ VERIFIED SELLER</span>` : ""}${v.dropship ? `<span class="text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-full px-2.5 py-1">📦 DROPSHIP PARTNER</span>` : ""}</div>
+          <div class="flex flex-wrap items-center gap-2"><h2 class="font-display text-3xl">${v.name}</h2>${v.verified ? `<span class="text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1">✓ VERIFIED SELLER</span>` : ""}${v.tier ? `<span class="text-[11px] font-bold bg-[#C8A15A]/15 text-[#8a6d2f] border border-[#C8A15A]/50 rounded-full px-2.5 py-1">◆ ${String(v.tier).toUpperCase()} PRO</span>` : ""}${v.dropship ? `<span class="text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-full px-2.5 py-1">📦 DROPSHIP PARTNER</span>` : ""}</div>
           <p class="text-muted text-sm mt-1">${v.tagline} · ${v.location} · On Abu.Hub since ${v.joined}</p>
           <p class="mt-3 max-w-2xl text-[15px] leading-relaxed">${v.story}</p>
           <p class="text-sm mt-3"><span class="text-[#C8A15A] font-semibold">★ ${v.rating}</span> <span class="text-muted">${v.reviews} reviews · ${v.sales} sales · ${prods.length} goods live</span></p>
@@ -1862,7 +2001,7 @@ $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
 document.documentElement.lang = lang;
 setTheme(theme); captureSellRef();
 observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
-refreshRates(); fetchPromos().then(() => refreshDynamic());
+refreshRates(); fetchPromos().then(() => refreshDynamic()); fetchTiers().then(() => refreshCatalog()).then(() => refreshDynamic());
 $("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
