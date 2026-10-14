@@ -169,7 +169,9 @@ function publicProducts() {
   const live = (db.products || []).filter(p => p.status === "approved").map(p => ({
     id: p.id, vendorId: "s-" + p.sellerId, name: p.name, category: p.category,
     price: p.price, oldPrice: null, rating: 5.0, reviews: 0, img: p.image,
-    badge: "New from maker", colors: ["Standard"], desc: p.desc, stock: p.stock
+    badge: "New from maker", colors: ["Standard"], desc: p.desc, stock: p.stock,
+    specs: p.specs && Object.keys(p.specs).length ? p.specs : undefined,
+    craft: p.craft && Object.keys(p.craft).length ? p.craft : undefined
   }));
   return [...SEED.products, ...live];
 }
@@ -197,7 +199,10 @@ app.get("/api/products", (req, res) => {
 });
 
 /* ---------- Seller Path: product CRUD (ownership-enforced) ---------- */
-const CATS = ["Fashion", "Home & Living", "Beauty", "Jewelry", "Art & Craft", "Grocery", "Other"];
+const CATS = ["Fashion", "Home & Living", "Beauty", "Jewelry", "Art & Craft", "Grocery", "Other", "Phones & Gadgets", "Computers & PCs", "Gaming & Consoles"];
+const TECH_CATS = ["Phones & Gadgets", "Computers & PCs", "Gaming & Consoles"];
+const SPEC_KEYS = ["chip", "ram", "storage", "screen", "battery", "condition"];
+const CRAFT_KEYS = ["materials", "dimensions", "care"];
 function validProduct(b) {
   const errs = [];
   const name = clean(b.name, 120), desc = clean(b.description ?? b.desc, 2000);
@@ -210,7 +215,17 @@ function validProduct(b) {
   if (!image) errs.push("image required (upload a photo first)");
   if (!/^(\/|https?:|data:image\/)/.test(image)) errs.push("image must be a URL or upload");
   if (!(stock >= 0) || stock > 1000000) errs.push("stock must be 0 – 1,000,000");
-  return { errs, data: { name, desc, price: Math.round(price * 100) / 100, stock, category, image } };
+  /* polymorphic variants: tech specs vs artisan craft details */
+  const specs = {}, craft = {};
+  if (TECH_CATS.includes(category)) {
+    if (b.specs && typeof b.specs === "object") SPEC_KEYS.forEach(k => { const v = clean(b.specs[k], 60); if (v) specs[k] = v; });
+    const cond = (b.specs && b.specs.condition) || "";
+    if (!["New", "Refurbished", "Used – like new", "Used-like new", "Used"].includes(clean(cond, 60))) errs.push("tech items need condition: New | Refurbished | Used");
+  }
+  if (!TECH_CATS.includes(category) && b.craft && typeof b.craft === "object") {
+    CRAFT_KEYS.forEach(k => { const v = clean(b.craft[k], 200); if (v) craft[k] = v; });
+  }
+  return { errs, data: { name, desc, price: Math.round(price * 100) / 100, stock, category, image, specs, craft } };
 }
 app.post("/api/products", auth, requireRole("seller", "admin"), (req, res) => {
   if (!req.profile) return res.status(403).json({ error: "Seller profile missing" });
@@ -277,18 +292,41 @@ app.post("/api/orders", auth, (req, res) => {
   }
   const order = { ref: ref || uid("AH-"), key: key || undefined, email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, escrow: "held", date: new Date().toISOString() };
   db.orders.unshift(order);
-  /* commission ledger: 8% per seller-product line */
-  db.transactions = db.transactions || [];
-  const live = Object.fromEntries((db.products || []).map(p => [p.id, p]));
-  items.forEach(l => {
-    const sp = live[l.id];
-    if (!sp) return;
-    const gross = Math.round(sp.price * (l.qty || 1) * 100) / 100;
-    db.transactions.unshift({ id: uid("T-"), orderRef: order.ref, sellerId: sp.sellerId, productId: sp.id, gross, commission: Math.round(gross * 0.08 * 100) / 100, net: Math.round(gross * 0.92 * 100) / 100, date: order.date });
-  });
+  splitLedger(db, order); // 8% platform / 92% seller escrow rows
   persist(db);
   emit("order.created", order); // background: receipts, vendor ping, reseller webhook
   res.json({ ok: true, order: { ref: order.ref, total: order.total } });
+});
+
+/* ---------- Ledger: split every seller line 8% platform / 92% escrow ---------- */
+function splitLedger(db, order) {
+  db.transactions = db.transactions || [];
+  if (db.transactions.some(t => t.orderRef === order.ref)) return; // idempotent
+  const live = Object.fromEntries((db.products || []).map(p => [p.id, p]));
+  (order.items || []).forEach(l => {
+    const sp = live[l.id];
+    if (!sp) return;
+    const gross = Math.round(sp.price * (l.qty || 1) * 100) / 100;
+    db.transactions.unshift({ id: uid("T-"), orderRef: order.ref, sellerId: sp.sellerId, productId: sp.id, gross, commission: Math.round(gross * 0.08 * 100) / 100, net: Math.round(gross * 0.92 * 100) / 100, date: order.date || new Date().toISOString() });
+  });
+}
+
+/* ---------- Payment webhook: verify → ledger → worker alerts, shopper never waits ---------- */
+app.post("/api/payments/webhook", async (req, res) => {
+  const { provider = "", ref = "", status = "", amount = 0 } = req.body || {};
+  if (!ref) return res.status(400).json({ error: "Missing ref" });
+  const paid = ["successful", "success", "paid", "complete", "completed"].includes(String(status).toLowerCase());
+  const db = load();
+  const o = db.orders.find(x => x.ref === ref);
+  if (!o) return res.status(404).json({ error: "Unknown order" });
+  if (paid) {
+    o.verified = true; o.verifiedVia = o.verifiedVia || ("webhook:" + (provider || "gateway"));
+    if (o.escrow !== "released") o.escrow = "held";
+    splitLedger(db, o);
+    persist(db);
+    emit("order.paid", { ref: o.ref, email: o.email, name: o.name, items: o.items, total: amount || o.total, method: o.method });
+  }
+  res.json({ ok: true, verified: !!o.verified, escrow: o.escrow });
 });
 
 /* ---------- server cart (distributed state: phone ↔ desktop sync when logged in) ---------- */
