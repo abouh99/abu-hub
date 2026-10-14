@@ -54,6 +54,10 @@ const handlers = {
     const s = job.payload;
     outbox(db, s.email, "Application received", `Karibu ${s.shop}! Review within 24h.`);
     outbox(db, "review@abuhub.internal", `Review seller ${s.shop}`, `${s.owner} · ${s.category} · dropship:${!!s.dropship}`);
+  },
+  async "order.released"(db, job) {
+    const o = job.payload;
+    outbox(db, o.seller, `Payout released ${o.ref}`, `${o.total} released from escrow (8% commission kept).`);
   }
 };
 
