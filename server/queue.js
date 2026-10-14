@@ -59,7 +59,7 @@ const handlers = {
     const o = job.payload;
     outbox(db, o.seller, `Payout released ${o.ref}`, `${o.total} released from escrow (8% commission kept).`);
   },
-  /* Post-payment fan-out: dashboard alert + HTML invoice + WhatsApp seller ping.
+  /* Post-payment fan-out: dashboard alert + HTML invoice + in-app seller ping.
      Runs in the worker — the webhook already returned, shopper never waits. */
   async "order.paid"(db, job) {
     const o = job.payload;
@@ -68,16 +68,11 @@ const handlers = {
       `<h2>Asante ${o.name || ""}! Order ${o.ref} is paid (${o.total}).</h2><table>${lines}</table><p>Makers ship in 1–2 days. Track it anytime with your ref.</p>`);
     outbox(db, "makers@abuhub.internal", `💰 Paid order ${o.ref}`,
       `ALERT ${(o.items || []).length} item(s) · ${o.total} via ${o.method || "gateway"}. Pack within 48h.`);
-    let num = "";
-    try {
-      const contacts = JSON.parse(fs.readFileSync(path.join(__dirname, "vendor-contacts.json"), "utf8"));
-      const ids = [...new Set((o.items || []).map(l => (l.vendorId || l.sellerId || "")))];
-      num = (contacts[ids.find(id => contacts[id])] || "").replace(/\D/g, "");
-    } catch {}
-    const wa = num
-      ? `https://wa.me/${num}?text=` + encodeURIComponent(`New Abu.Hub order ${o.ref} (${o.total}). Pack within 48h.`)
-      : `https://wa.me/${process.env.SUPPORT_WA || ""}?text=` + encodeURIComponent(`New order ${o.ref} needs a maker ping.`);
-    outbox(db, "whatsapp-dispatch", `Seller ping ${o.ref}`, wa);
+    db.threads = db.threads || []; db.messages = db.messages || [];
+    const jid2 = () => "M" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 90 + 10);
+    db.messages.push({ id: jid2(), threadId: "broadcast", from: "system", system: true,
+      text: `📦 Order ${o.ref} paid (${o.total}). Makers: check your dashboard and pack within 48h.`,
+      flags: [], date: new Date().toISOString() });
   },
   async "promo.sold"(db, job) {
     const p = job.payload;
