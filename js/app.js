@@ -519,13 +519,9 @@ function moodDrag() {
   });
 }
 
-/* ---------- Simple authentication (no setup needed) ---------- */
-const AUTH_CFG = JSON.parse(localStorage.getItem("abuhub_auth") || "null") || {
-  apiKey: "", authDomain: "", projectId: "", appId: ""
-};
+/* ---------- Simple authentication (password accounts on this device, cloud API when set) ---------- */
 let _authUser = JSON.parse(localStorage.getItem("abuhub_user") || "null");
-let _firebaseApp = null, _authMode = "signin";
-const authReady = () => false; // simple mode: no external project required
+let _authMode = "signin";
 function initAuth(){ updateAccountUI(); renderAuth(); }
 function updateAccountUI(){
   const dot = $("#accountDot"), ic = $("#accountIcon");
@@ -557,12 +553,13 @@ const save = () => {
 /* ---------- Routing ---------- */
 function go(view, cat) {
   $$(".view").forEach(v => v.classList.add("hidden"));
-  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about" };
+  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about", sell: "view-sell" };
   $("#" + (map[view] || "view-home")).classList.remove("hidden");
   $("#mobileNav").classList.add("hidden");
   if (cat) { filters.cats = [cat]; syncFilterUI(); }
   if (view === "shop") renderShop();
   if (view === "vendors") renderVendors();
+  if (view === "sell") renderSell();
   $$("#mobileTabs .mtab").forEach(b => b.classList.toggle("on", b.dataset.tab === view || (view === "vendor" && b.dataset.tab === "shop")));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeAll(true);
@@ -1143,8 +1140,45 @@ function showModal(id){ closeModals(true); $("#" + id).classList.remove("hidden"
 function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function closeAll(silent){ closeDrawers(true); closeModals(true); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function openAuth(){ showModal("authModal"); renderAuth(); }
-function openSeller(){ showModal("sellerModal"); }
-function mockAuth(via){ toast("Old demo login retired — connect Firebase below for real auth.", "warn"); renderAuth(); }
+/* ----- Seller-invite landing ----- */
+function myInviteCode() {
+  let c = localStorage.getItem("abuhub_invitecode");
+  if (!c) { c = "ABU-" + Math.random().toString(36).slice(2, 6).toUpperCase(); localStorage.setItem("abuhub_invitecode", c); }
+  return c;
+}
+function inviteURL() { return location.origin + location.pathname + "?sellref=" + myInviteCode(); }
+function renderSell() {
+  const code = myInviteCode();
+  $("#inviteCode").textContent = code;
+  $("#inviteLink").value = inviteURL();
+  const n = JSON.parse(localStorage.getItem("abuhub_sellers") || "[]").filter(s => (s.ref || "").toUpperCase() === code).length;
+  $("#inviteCount").textContent = n;
+  sellCalc($("#calcRange")?.value || 1200);
+}
+function copyInvite() {
+  navigator.clipboard?.writeText(inviteURL());
+  toast(`Invite link copied — ${myInviteCode()} ✦ 0% commission per joined seller for 30 days.`);
+}
+function sellCalc(v) {
+  v = Number(v) || 0;
+  $("#calcSalesLbl").textContent = money(v);
+  $("#calcKeep").textContent = money(v * 0.92);
+  $("#calcOther").textContent = money(v * 0.70);
+  $("#calcWin").textContent = `+ ${money(v * 0.22)} more in your pocket every month ✦`;
+}
+function captureSellRef() {
+  try {
+    const q = new URLSearchParams(location.search).get("sellref");
+    if (q) localStorage.setItem("abuhub_sellref", q.trim().toUpperCase());
+  } catch {}
+}
+function openSeller(){
+  showModal("sellerModal");
+  const ref = localStorage.getItem("abuhub_sellref") || "";
+  const inp = $("#sRef"), hint = $("#sRefHint");
+  if (inp && !inp.value && ref) inp.value = ref;
+  if (hint) { hint.classList.toggle("hidden", !ref); if (ref) hint.textContent = `✓ Referred by ${ref} — fast-track review unlocked.`; }
+}
 /* ----- Simple auth with password (stored on this device, no setup) ----- */
 function getAccounts(){ return JSON.parse(localStorage.getItem("abuhub_accounts") || "[]"); }
 function saveAccounts(a){ localStorage.setItem("abuhub_accounts", JSON.stringify(a)); }
@@ -1221,25 +1255,14 @@ function setAuthMode(m) {
   body.classList.add("flipping");
   setTimeout(() => { renderAuth(); requestAnimationFrame(() => requestAnimationFrame(() => { const b = $("#authBody"); if (b) b.classList.remove("flipping"); })); }, 200);
 }
-function saveAuthCfg(){ toast("No setup needed — just enter name + email.", "warn"); }
-function resetAuthCfg(){ renderAuth(); }
-function demoLogin(){ renderAuth(); }
-function fb(){ return firebase.auth(); }
-async function emailLogin(e){ e.preventDefault(); simpleLogin(e); }
-async function emailSignup(e){ e.preventDefault(); simpleLogin(e); }
-async function googleLogin(){ toast("Google login needs a Firebase project — skipped for now. Use name + email.", "warn"); }
-let _confirm = null;
-async function phoneLogin(){ toast("Phone OTP needs a Firebase project — skipped for now. Use name + email.", "warn"); }
-async function verifyCode(){ toast("Phone OTP disabled in simple mode.", "warn"); }
 async function logout(){
-  try { if (authReady() && typeof firebase !== "undefined" && firebase.apps.length) await fb().signOut(); } catch (e) {}
   _authUser = null; localStorage.setItem("abuhub_user", JSON.stringify(null));
   API_TOKEN = ""; localStorage.removeItem("abuhub_token");
   updateAccountUI(); renderAuth(); toast("Signed out.");
 }
 function submitSeller(e){
   e.preventDefault();
-  const payload = { shop: $("#sName").value, owner: $("#sOwner").value, email: $("#sEmail").value, category: $("#sCat").value, story: $("#sStory").value, dropship: $("#sDropship")?.checked || false };
+  const payload = { shop: $("#sName").value, owner: $("#sOwner").value, email: $("#sEmail").value, category: $("#sCat").value, story: $("#sStory").value, dropship: $("#sDropship")?.checked || false, ref: ($("#sRef")?.value || localStorage.getItem("abuhub_sellref") || "").trim().toUpperCase() };
   if (API_BASE) api("/api/sellers", { method: "POST", body: JSON.stringify(payload) }).catch(() => null);
   const apps = JSON.parse(localStorage.getItem("abuhub_sellers") || "[]");
   apps.unshift({ ...payload, date: new Date().toISOString() });
@@ -1475,7 +1498,7 @@ $$("#curSel, select[onchange^='setCurrency']").forEach(s => s.value = currency);
 buildCurrSelectors();
 $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
 document.documentElement.lang = lang;
-setTheme(theme);
+setTheme(theme); captureSellRef();
 observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
 refreshRates();
 $("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
