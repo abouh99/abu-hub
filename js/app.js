@@ -579,7 +579,8 @@ function copyCode(){ navigator.clipboard?.writeText("ABUHUB10"); toast("Code ABU
 function productCard(p) {
   const v = vendorById(p.vendorId);
   const wished = wishlist.includes(p.id);
-  const sale = p.oldPrice ? `<span class="p-badge sale">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : (p.badge ? `<span class="p-badge">${p.badge}</span>` : "");
+  const feat = promoFor(p.id);
+  const sale = feat ? `<span class="p-badge sale">★ Featured</span>` : (p.oldPrice ? `<span class="p-badge sale">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : (p.badge ? `<span class="p-badge">${p.badge}</span>` : ""));
   return `
   <article class="p-card">
     <div class="p-img" onclick="openProduct('${p.id}')">
@@ -618,7 +619,7 @@ function renderHome() {
   const cats = ["All", ...new Set(PRODUCTS.map(p => p.category))];
   const chipHTML = cats.map(c => `<button onclick="setTrend('${c}')" class="chip ${c === trendCat ? "active" : ""}">${c}</button>`).join("");
   $("#trendFilters").innerHTML = chipHTML; $("#trendFiltersM").innerHTML = chipHTML;
-  const list = (trendCat === "All" ? [...PRODUCTS].sort((a, b) => b.reviews - a.reviews) : PRODUCTS.filter(p => p.category === trendCat)).slice(0, 8);
+  const list = pinPromoted((trendCat === "All" ? [...PRODUCTS].sort((a, b) => b.reviews - a.reviews) : PRODUCTS.filter(p => p.category === trendCat))).slice(0, 8);
   $("#trendGrid").innerHTML = list.map(productCard).join("");
   // collections
   $("#collectionGrid").innerHTML = COLLECTIONS.map(c => `
@@ -818,6 +819,62 @@ function protectContinue() {
 }
 function protectCheckout() { closeAll(); openCart(); }
 
+/* ---------- Promotions shelf (paid pinning: Hot $9/wk, Trending $19/wk) ---------- */
+const PROMO_RATES = { hot: 9, trending: 19 };
+let CLOUD_PROMOS = [];
+async function fetchPromos() {
+  if (!API_BASE) return;
+  try {
+    const j = await (await fetch(API_BASE + "/api/promotions?active=1")).json();
+    CLOUD_PROMOS = (j.promotions || []).map(p => ({ productId: p.productId, shelf: p.shelf, ends: p.ends }));
+  } catch {}
+}
+function localPromos() {
+  const now = Date.now();
+  return JSON.parse(localStorage.getItem("abuhub_promos") || "[]").filter(p => p.ends > now);
+}
+function promoFor(pid) {
+  const now = Date.now();
+  return localPromos().concat(CLOUD_PROMOS).find(p => p.productId === pid && p.ends > now) || null;
+}
+function pinPromoted(list) {
+  return [...list].sort((a, b) => ((promoFor(b.id) ? 1 : 0) - (promoFor(a.id) ? 1 : 0)));
+}
+function openPromote(pid, vendorId) {
+  const list = vendorId ? PRODUCTS.filter(p => p.vendorId === vendorId) : PRODUCTS;
+  const opts = list.map(p => `<option value="${p.id}" ${p.id === pid ? "selected" : ""}>${p.name} — ${money(p.price)}</option>`).join("");
+  $("#promoteBody").innerHTML = `
+    <div class="grid gap-2.5">
+      <select id="pmProduct" class="f-input">${opts}</select>
+      <div class="grid grid-cols-2 gap-2.5">
+        <select id="pmShelf" onchange="pmFee()" class="f-input"><option value="hot">🔥 Hot Right Now — $9/wk</option><option value="trending">📈 Trending shelf — $19/wk</option></select>
+        <select id="pmWeeks" onchange="pmFee()" class="f-input"><option value="1">1 week</option><option value="2">2 weeks</option><option value="4">4 weeks</option></select>
+      </div>
+      <input id="pmEmail" type="email" value="${(_authUser || {}).email || checkoutData.email || ""}" placeholder="Billing email *" class="f-input" />
+      <div class="bg-cream2 border border-line rounded-2xl p-4 text-sm flex justify-between"><span>Pinning fee</span><strong id="pmFee" class="font-display text-xl">$9</strong></div>
+      <button onclick="submitPromote()" class="btn-ink w-full">Pay fee → pin my product</button>
+      <p class="text-xs text-muted text-center">Invoice + receipt by email. Pinning starts on payment, refundable in 24h.</p>
+    </div>`;
+  pmFee();
+  showModal("promoteModal");
+}
+function pmFee() {
+  const fee = (PROMO_RATES[$("#pmShelf").value] || 9) * Number($("#pmWeeks").value || 1);
+  $("#pmFee").textContent = money(fee);
+}
+async function submitPromote() {
+  const productId = $("#pmProduct").value, shelf = $("#pmShelf").value, weeks = Number($("#pmWeeks").value || 1);
+  const email = $("#pmEmail").value.trim();
+  if (!email) { toast("Billing email required", "warn"); return; }
+  const fee = PROMO_RATES[shelf] * weeks, now = Date.now();
+  const rec = { productId, shelf, weeks, fee, email, ends: now + weeks * 7 * 864e5, date: new Date().toISOString() };
+  const all = JSON.parse(localStorage.getItem("abuhub_promos") || "[]");
+  all.unshift(rec); localStorage.setItem("abuhub_promos", JSON.stringify(all));
+  if (API_BASE && API_TOKEN) api("/api/promotions", { method: "POST", body: JSON.stringify({ productId, shelf, weeks, email }) }).catch(() => null);
+  closeAll(); refreshDynamic();
+  toast(`“${productById(productId).name}” pinned on ${shelf} for ${weeks}wk · invoice $${fee} sent to ${email} ✓`);
+}
+
 /* ----- In-app chat assistant ----- */
 let _chatOpened = false;
 function toggleChat(force) {
@@ -951,6 +1008,7 @@ function filteredProducts() {
   if (filters.sort === "low") list.sort((a, b) => a.price - b.price);
   if (filters.sort === "high") list.sort((a, b) => b.price - a.price);
   if (filters.sort === "rating") list.sort((a, b) => b.rating - a.rating);
+  if (filters.sort === "featured") { const pinned = pinPromoted(list); list.length = 0; list.push(...pinned); }
   return list;
 }
 function renderShop() {
@@ -1007,6 +1065,7 @@ function openVendor(id){
         </div>
         <div class="flex sm:flex-col gap-2 shrink-0">
           <button onclick="toggleFollow('${v.id}');openVendor('${v.id}')" class="btn-ink !py-3 text-sm whitespace-nowrap">${isF ? "✓ Following" : "+ Follow shop"}</button>
+          <button onclick="openPromote(null,'${v.id}')" class="btn-line text-sm whitespace-nowrap">📣 Promote</button>
           <button onclick="vendorChat('${v.id}')" class="btn-line text-sm whitespace-nowrap">💬 Message</button>
         </div>
       </div>
@@ -1060,6 +1119,7 @@ function openProduct(id){
           <div class="bg-white border border-line rounded-2xl p-3">🛡<br><strong>Buyer cover</strong><br><span class="text-muted">Full refund</span></div>
         </div>
         <button onclick="addToCart('${p.id}',true);closeModals();openCheckout()" class="w-full mt-3 bg-[#BC5A28] text-white font-bold rounded-full py-4 hover:bg-[#9A451C] transition">Buy it now →</button>
+        <button onclick="openPromote('${p.id}')" class="w-full mt-2 text-[13px] font-semibold text-muted hover:text-ink underline underline-offset-4">📣 Vendor? Promote this product from $9/wk</button>
         ${related.length ? `<p class="f-label mt-6">Pairs well with</p>
         <div class="grid grid-cols-2 gap-2.5">${related.map(r => `
           <div class="bg-white border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-ink transition" onclick="openProduct('${r.id}')">
@@ -1160,7 +1220,7 @@ function openCart(){ closeDrawers(true); renderCartItems(); $("#cartDrawer").cla
 function openWishlist(){ closeDrawers(true); renderWishItems(); $("#wishDrawer").classList.add("open"); showOverlay(); }
 function closeDrawers(silent){ $$(".drawer").forEach(d => d.classList.remove("open")); if (!silent) hideOverlay(); }
 function showModal(id){ closeModals(true); $("#" + id).classList.remove("hidden"); showOverlay(); document.body.style.overflow = "hidden"; }
-function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal", "protectModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
+function closeModals(silent){ ["productModal", "checkoutModal", "authModal", "sellerModal", "rfqModal", "trackModal", "protectModal", "promoteModal"].forEach(m => $("#" + m).classList.add("hidden")); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function closeAll(silent){ closeDrawers(true); closeModals(true); if (!silent) { hideOverlay(); document.body.style.overflow = ""; } }
 function openAuth(){ showModal("authModal"); renderAuth(); }
 /* ----- Seller-invite landing ----- */
@@ -1523,7 +1583,7 @@ $$("#langSel, select[onchange^='setLang']").forEach(s => s.value = lang);
 document.documentElement.lang = lang;
 setTheme(theme); captureSellRef();
 observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
-refreshRates();
+refreshRates(); fetchPromos().then(() => refreshDynamic());
 $("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
