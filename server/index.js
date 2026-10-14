@@ -410,16 +410,43 @@ function markVerified(ref, via) {
   } catch {}
 }
 
-/* ---------- WhatsApp Shield (Protocol A) ----------
-   Raw seller numbers NEVER leave the server. Frontend links to
-   /api/vendors/:id/chat; we 302-redirect to wa.me. Numbers live in
-   vendor-contacts.json (never in git-shared frontend code). */
-const CONTACTS_FILE = path.join(__dirname, "vendor-contacts.json");
-function vendorNumber(id) {
-  try { return (JSON.parse(fs.readFileSync(CONTACTS_FILE, "utf8"))[id] || "").replace(/\D/g, ""); }
-  catch { return ""; }
+/* ---------- Behavior ingest + recommendations (personas feed the storefront) ---------- */
+app.post("/api/track", (req, res) => {
+  const { type = "", data = {}, sid = "" } = req.body || {};
+  if (!["view", "search", "cart"].includes(type)) return res.status(400).json({ error: "bad event" });
+  const db = load();
+  db.events = db.events || [];
+  db.events.unshift({ type, data, sid: clean(sid, 24), email: req.headers.authorization ? "user" : "anon", date: new Date().toISOString() });
+  db.events = db.events.slice(0, 2000);
+  persist(db);
+  res.json({ ok: true });
+});
+app.get("/api/recommend", (req, res) => {
+  const sid = clean(req.query.sid, 24);
+  const db = load();
+  const mine = (db.events || []).filter(e => sid && e.sid === sid).slice(0, 100);
+  const live = (db.products || []).filter(x => x.status === "approved");
+  const cats = {};
+  mine.forEach(e => {
+    const p = [...SEED.products, ...live].find(x => x.id === (e.data || {}).id);
+    if (p) cats[p.category] = (cats[p.category] || 0) + (e.type === "cart" ? 3 : 1);
+  });
+  const top = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
+  const tech = ["Phones & Gadgets", "Computers & PCs", "Gaming & Consoles"];
+  res.json({ topCats: top, persona: top.length && top.every(c => tech.includes(c)) ? "tech" : top.length ? "mixed" : null });
+});
+
+/* ---------- In-app messaging (sandboxed: no external numbers, ever) ---------- */
+const EVADE_PATTERNS = [
+  /\+?\d[\d\s.\-()]{6,}\d/, /(m[-\s]?pesa|tigo\s?pesa|airtel\s?money|halopesa|mixx)/i,
+  /(bank\s*account|account\s*(number|no)|iban|swift)/i, /(whatsapp|telegram|signal|dm\s?me|call\s?me|text\s?me)/i,
+  /(off[\s-]?platform|outside\s+(abu\.?hub|the\s+app)|direct\s+payment|pay\s+directly|cash\s+to\s+(me|my))/i
+];
+function scanEvasion(text) {
+  const hits = EVADE_PATTERNS.filter(rx => rx.test(text || "")).map(rx => rx.source.slice(0, 28));
+  return [...new Set(hits)];
 }
-/* Scraper shield: 30 chat redirects per IP per minute */
+/* Abuse shield: 30 message posts per IP per minute */
 const _rl = new Map();
 function chatLimiter(req, res, next) {
   const k = (req.ip || "?") + ":" + Math.floor(Date.now() / 6e4);
@@ -429,13 +456,51 @@ function chatLimiter(req, res, next) {
   if (n > 30) return res.status(429).json({ error: "Slow down — too many chat requests" });
   next();
 }
-app.get("/api/vendors/:id/chat", chatLimiter, (req, res) => {
-  const num = vendorNumber(req.params.id);
-  if (!num) return res.status(404).json({ error: "Vendor chat unavailable — contact Abu.Hub support instead" });
-  const text = String(req.query.text || "Hi! I found you on Abu.Hub.").slice(0, 300);
-  res.redirect(302, "https://wa.me/" + num + "?text=" + encodeURIComponent(text));
+app.post("/api/threads", auth, (req, res) => {
+  const { vendor = "support", subject = "" } = req.body || {};
+  const db = load();
+  db.threads = db.threads || [];
+  const open = db.threads.find(t => t.email === req.user.email && t.vendor === vendor && t.status === "open");
+  if (open) return res.json({ ok: true, thread: open });
+  const th = { id: uid("TH-"), email: req.user.email, name: req.user.name, vendor: clean(vendor, 40), subject: clean(subject, 120), status: "open", lastSeen: {}, date: new Date().toISOString() };
+  db.threads.unshift(th); persist(db);
+  res.json({ ok: true, thread: th });
 });
-/* Disintermediation audit trail (Protocol B): every handoff ack is logged */
+app.get("/api/threads", auth, (req, res) => {
+  const db = load();
+  const mine = (db.threads || []).filter(t => t.email === req.user.email);
+  const msgs = db.messages || [];
+  res.json({ threads: mine.map(t => ({ ...t, unread: msgs.filter(m => m.threadId === t.id && m.from !== req.user.email && m.date > (t.lastSeen?.[req.user.email] || "")).length })) });
+});
+app.get("/api/threads/:id/messages", auth, (req, res) => {
+  const db = load();
+  const th = (db.threads || []).find(t => t.id === req.params.id && t.email === req.user.email);
+  if (!th) return res.status(404).json({ error: "Unknown thread" });
+  th.lastSeen = th.lastSeen || {}; th.lastSeen[req.user.email] = new Date().toISOString();
+  persist(db);
+  res.json({ messages: (db.messages || []).filter(m => m.threadId === th.id).slice(-100) });
+});
+app.post("/api/threads/:id/messages", auth, chatLimiter, (req, res) => {
+  const text = clean(req.body?.text, 1000);
+  if (!text) return res.status(400).json({ error: "Empty message" });
+  const db = load();
+  const th = (db.threads || []).find(t => t.id === req.params.id && t.email === req.user.email);
+  if (!th) return res.status(404).json({ error: "Unknown thread" });
+  db.messages = db.messages || [];
+  const flags = scanEvasion(text);
+  const m = { id: uid("M-"), threadId: th.id, from: req.user.email, text, flags, date: new Date().toISOString() };
+  db.messages.push(m);
+  if (flags.length) {
+    db.messages.push({ id: uid("M-"), threadId: th.id, from: "system", system: true,
+      text: "⚠️ Safety notice: sharing phone numbers, bank details or arranging off-platform payment forfeits your 30-Day Money-Back Guarantee and tracking. Keep payment inside Abu.Hub escrow to stay protected.",
+      flags: ["auto-warning"], date: new Date().toISOString() });
+  }
+  persist(db);
+  res.json({ ok: true, message: m, flagged: flags.length > 0 });
+});
+/* Retired external redirect (superseded by sandboxed threads): explicit 410 */
+app.get("/api/vendors/:id/chat", (req, res) => res.status(410).json({ error: "Moved in-app — open Messages in your account" }));
+/* Disintermediation audit trail: every handoff ack is logged */
 app.post("/api/chat-ack", (req, res) => {
   const { vendor = "" } = req.body || {};
   const db = load();
