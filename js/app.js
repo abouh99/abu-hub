@@ -143,7 +143,7 @@ const stars = (r) => "★".repeat(Math.round(r)) + "☆".repeat(5 - Math.round(r
 
 let cart = JSON.parse(localStorage.getItem("abuhub_cart") || "[]"); // {id, qty, variant}
 let wishlist = JSON.parse(localStorage.getItem("abuhub_wish") || "[]");
-let filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, sort: "featured" };
+let filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, tech: { ram: 0, storage: 0, cond: "" }, sort: "featured" };
 let trendCat = "All";
 let checkoutStep = 1, checkoutData = {};
 let followed = JSON.parse(localStorage.getItem("abuhub_follow") || "[]");
@@ -639,6 +639,7 @@ function productCard(p) {
       ${v.dropship ? `<span class="text-[11px] font-bold text-[#0AA5C2]">📦 SHIPS FROM MAKER</span>` : ""}
       <h3 onclick="openProduct('${p.id}')" class="font-display text-[16px] sm:text-[18px] leading-snug cursor-pointer hover:text-[#BC5A28] line-clamp-1">${p.name}</h3>
       <div class="flex items-center gap-1.5 text-[13px]"><span class="text-[#C8A15A] tracking-tight">${stars(p.rating)}</span><span class="text-muted">${p.rating} (${p.reviews})</span></div>
+      ${p.specs ? `<p class="text-[11px] font-bold text-[#0AA5C2] mt-1">⚡ ${[p.specs.ram, p.specs.storage, p.specs.condition].filter(Boolean).join(" · ")}</p>` : ""}
       ${urgencyHTML(p)}
       <div class="flex items-center gap-2 mt-auto pt-1">
         <strong class="text-[16px] sm:text-lg">${money(p.price)}</strong>
@@ -778,7 +779,7 @@ function renderOrigins(){
 }
 function goOrigin(country){
   const ids = VENDORS.filter(v => countryOf(v) === country).map(v => v.id);
-  filters = { q: "", cats: [], max: 600, minRating: 0, vendors: ids, dropship: false, sort: "featured" };
+  filters = { q: "", cats: [], max: 600, minRating: 0, vendors: ids, dropship: false, tech: { ram: 0, storage: 0, cond: "" }, sort: "featured" };
   syncFilterUI(); go("shop");
   toast(`Showing handmade goods from ${country} ${ (typeof ORIGIN_FLAGS !== "undefined" && ORIGIN_FLAGS[country]) || ""}`);
 }
@@ -985,12 +986,39 @@ async function renderSellerHub() {
 }
 function resetUpload() {
   _editingId = null; _upImg = "";
-  ["upName", "upPrice", "upStock", "upCat", "upDesc"].forEach(id => $("#" + id).value = id === "upStock" ? 10 : "");
+  ["upName", "upPrice", "upStock", "upCat", "upDesc", "upChip", "upRam", "upStorage", "upScreen", "upBattery", "upMaterials", "upDims", "upCare"].forEach(id => { const el = document.getElementById(id); if (el) el.value = id === "upStock" ? 10 : ""; });
+  const cond = document.getElementById("upCond"); if (cond) cond.value = "";
   $("#upFile").value = ""; $("#upPreview").classList.add("hidden");
+  $("#techFields").classList.add("hidden"); $("#craftFields").classList.add("hidden");
   $("#upPhotoMsg").textContent = "JPG/PNG, max 2MB. Auto-compressed on device.";
   $("#upTitle").textContent = "List a new product";
 }
 function showUpPreview(src) { const im = $("#upPreview"); im.src = src; im.classList.remove("hidden"); }
+/* Conditional upload fields: tech specs vs artisan details */
+function isTechCat(c) { return (typeof TECH_CATS !== "undefined" ? TECH_CATS : []).includes(c); }
+function upCatChange() {
+  const tech = isTechCat($("#upCat").value);
+  const anyCat = !!$("#upCat").value;
+  $("#techFields").classList.toggle("hidden", !tech);
+  $("#craftFields").classList.toggle("hidden", !anyCat || tech);
+}
+function collectSpecs() {
+  const specs = {};
+  ["upChip:chip", "upRam:ram", "upStorage:storage", "upScreen:screen", "upBattery:battery", "upCond:condition"].forEach(pair => {
+    const [id, k] = pair.split(":");
+    const v = (document.getElementById(id)?.value || "").trim();
+    if (v) specs[k] = v.slice(0, 60);
+  });
+  return specs;
+}
+function collectCraft() {
+  const g = (id) => (document.getElementById(id)?.value || "").trim().slice(0, 200);
+  const craft = {};
+  if (g("upMaterials")) craft.materials = g("upMaterials");
+  if (g("upDims")) craft.dimensions = g("upDims");
+  if (g("upCare")) craft.care = g("upCare");
+  return craft;
+}
 function upPhoto(input) {
   const f = input.files[0]; if (!f) return;
   const msg = $("#upPhotoMsg");
@@ -1030,10 +1058,13 @@ async function submitUpload(e) {
   if (!cat) return err("Choose a category.");
   if (!desc) return err("Add a short description.");
   if (!_upImg) return err("Add a photo first.");
+  const specs = isTechCat(cat) ? collectSpecs() : {};
+  const craft = !isTechCat(cat) ? collectCraft() : {};
+  if (isTechCat(cat) && !specs.condition) return err("Pick a device condition (New / Refurbished / Used).");
   const btn = $("#upSubmit"); btn.textContent = "Saving…"; btn.disabled = true;
   try {
     if (API_BASE && API_TOKEN) {
-      const payload = { name, price, stock: stock >= 0 ? stock : 0, category: cat, description: desc, image: _upImg };
+      const payload = { name, price, stock: stock >= 0 ? stock : 0, category: cat, description: desc, image: _upImg, specs, craft };
       if (_editingId) await api("/api/products/" + _editingId, { method: "PUT", body: JSON.stringify(payload) });
       else await api("/api/products", { method: "POST", body: JSON.stringify(payload) });
       toast(_editingId ? "Product updated ✓" : "Saved — pending review, live after approval ✓");
@@ -1041,9 +1072,9 @@ async function submitUpload(e) {
       const all = JSON.parse(localStorage.getItem("abuhub_myproducts") || "[]");
       if (_editingId) {
         const p = all.find(x => x.id === _editingId);
-        if (p) Object.assign(p, { name, price, stock, category: cat, desc, img: _upImg });
+        if (p) Object.assign(p, { name, price, stock, category: cat, desc, img: _upImg, specs: Object.keys(specs).length ? specs : undefined, craft: Object.keys(craft).length ? craft : undefined });
       } else {
-        all.unshift({ id: "L-" + Date.now().toString(36).toUpperCase(), vendorId: sellerKey(), shop: shopOf(), name, category, price, oldPrice: null, rating: 5.0, reviews: 0, img: _upImg, badge: "New from maker", colors: ["Standard"], desc, stock: stock >= 0 ? stock : 0, status: "approved" });
+        all.unshift({ id: "L-" + Date.now().toString(36).toUpperCase(), vendorId: sellerKey(), shop: shopOf(), name, category, price, oldPrice: null, rating: 5.0, reviews: 0, img: _upImg, badge: "New from maker", colors: ["Standard"], desc, stock: stock >= 0 ? stock : 0, status: "approved", specs: Object.keys(specs).length ? specs : undefined, craft: Object.keys(craft).length ? craft : undefined });
       }
       localStorage.setItem("abuhub_myproducts", JSON.stringify(all));
       toast("Live on the storefront ✓ (demo auto-approves; admin review when API is live)");
@@ -1058,6 +1089,11 @@ function editProduct(id) {
   _editingId = id; _upImg = p.img;
   $("#upName").value = p.name; $("#upPrice").value = p.price; $("#upStock").value = p.stock ?? 10;
   $("#upCat").value = p.category; $("#upDesc").value = p.desc;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
+  set("upChip", p.specs?.chip); set("upRam", p.specs?.ram); set("upStorage", p.specs?.storage);
+  set("upScreen", p.specs?.screen); set("upBattery", p.specs?.battery); set("upCond", p.specs?.condition);
+  set("upMaterials", p.craft?.materials); set("upDims", p.craft?.dimensions); set("upCare", p.craft?.care);
+  upCatChange();
   showUpPreview(p.img); $("#upTitle").textContent = "Edit product";
   sellerTab("add"); window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1188,11 +1224,24 @@ function buildFilterUI() {
   $("#rateFilters").innerHTML = [0, 4.5, 4.8].map(r => `<button onclick="setFilter('minRating',${r})" class="chip !text-[12px] ${filters.minRating === r ? "active" : ""}">${r === 0 ? "Any" : "★ " + r + "+"}</button>`).join("");
   $("#vendorFilters").innerHTML = VENDORS.map(v => `<label class="flex items-center gap-2.5 text-sm cursor-pointer"><input type="checkbox" ${filters.vendors.includes(v.id) ? "checked" : ""} onchange="toggleVendorF('${v.id}')" class="w-4 h-4 accent-[#BC5A28]" /> <span class="line-clamp-1">${v.name}</span></label>`).join("");
 }
-function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = money(filters.max); $("#sortSel").value = filters.sort; const ds = $("#dsCheck"); if (ds) ds.checked = !!filters.dropship; }
+function syncFilterUI(){ buildFilterUI(); $("#shopSearch").value = filters.q; $("#priceRange").value = filters.max; $("#priceVal").textContent = money(filters.max); $("#sortSel").value = filters.sort; const ds = $("#dsCheck"); if (ds) ds.checked = !!filters.dropship;
+  const techCtx = filters.cats.some(c => (typeof TECH_CATS !== "undefined" ? TECH_CATS : []).includes(c));
+  const tf = $("#techFilters"); if (tf) tf.classList.toggle("hidden", !techCtx);
+  const r1 = document.getElementById("fRam"); if (r1) r1.value = String(filters.tech.ram || "");
+  const r2 = document.getElementById("fStorage"); if (r2) r2.value = String(filters.tech.storage || "");
+  const r3 = document.getElementById("fCond"); if (r3) r3.value = filters.tech.cond || "";
+}
+function gbNum(s) { const m = String(s || "").match(/([\d.]+)\s*(TB|GB)/i); if (!m) return 0; return parseFloat(m[1]) * (m[2].toUpperCase() === "TB" ? 1000 : 1); }
+function setTech(k, v) {
+  filters.tech[k] = k === "cond" ? v : Number(v) || 0;
+  renderShop();
+  const active = filters.tech.ram || filters.tech.storage || filters.tech.cond;
+  toast(active ? `⚡ Tech filter: ${filters.tech.cond || ""} ${filters.tech.ram ? filters.tech.ram + "GB+ RAM" : ""} ${filters.tech.storage ? filters.tech.storage + "GB+ storage" : ""}`.trim() : "Hardware filters cleared");
+}
 function toggleCat(c){ filters.cats.includes(c) ? filters.cats = filters.cats.filter(x => x !== c) : filters.cats.push(c); syncFilterUI(); renderShop(); }
 function toggleVendorF(id){ filters.vendors.includes(id) ? filters.vendors = filters.vendors.filter(x => x !== id) : filters.vendors.push(id); syncFilterUI(); renderShop(); }
 function setFilter(k, v){ if (k === "max") $("#priceVal").textContent = money(Number(v)); filters[k] = (k === "max" || k === "minRating") ? Number(v) : v; syncFilterUI(); renderShop(); }
-function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
+function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, tech: { ram: 0, storage: 0, cond: "" }, sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
 function toggleFilters(){ $("#filterPanel").classList.toggle("hidden"); }
 function toggleDropship(){ filters.dropship = !filters.dropship; syncFilterUI(); renderShop(); toast(filters.dropship ? "Showing ships-from-maker goods only 📦" : "Showing all goods"); }
 function onHeaderSearch(v){ filters.q = v; if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
@@ -1203,7 +1252,10 @@ function filteredProducts() {
   if (filters.cats.length) list = list.filter(p => filters.cats.includes(p.category));
   list = list.filter(p => p.price <= filters.max && p.rating >= filters.minRating);
   if (filters.vendors.length) list = list.filter(p => filters.vendors.includes(p.vendorId));
-  if (filters.dropship) list = list.filter(p => vendorById(p.vendorId).dropship);
+  if (filters.dropship) list = list.filter(p => (vendorById(p.vendorId) || {}).dropship);
+  if (filters.tech.ram) list = list.filter(p => gbNum(p.specs?.ram) >= filters.tech.ram);
+  if (filters.tech.storage) list = list.filter(p => gbNum(p.specs?.storage) >= filters.tech.storage);
+  if (filters.tech.cond) list = list.filter(p => (p.specs?.condition || "") === filters.tech.cond);
   if (filters.sort === "low") list.sort((a, b) => a.price - b.price);
   if (filters.sort === "high") list.sort((a, b) => b.price - a.price);
   if (filters.sort === "rating") list.sort((a, b) => b.rating - a.rating);
@@ -1214,7 +1266,7 @@ function renderShop() {
   buildFilterUI();
   const list = filteredProducts();
   $("#shopCount").textContent = `· ${list.length} goods`;
-  $("#activeCats").innerHTML = filters.cats.map(c => `<span class="chipf">${c} <button onclick="toggleCat('${c}')">✕</button></span>`).join("") + (filters.dropship ? `<span class="chipf">📦 Ships from maker <button onclick="toggleDropship()">✕</button></span>` : "") + (filters.q ? `<span class="chipf">“${filters.q}” <button onclick="setFilter('q','');document.querySelector('#headerSearch').value=''">✕</button></span>` : "");
+  $("#activeCats").innerHTML = filters.cats.map(c => `<span class="chipf">${c} <button onclick="toggleCat('${c}')">✕</button></span>`).join("") + (filters.dropship ? `<span class="chipf">📦 Ships from maker <button onclick="toggleDropship()">✕</button></span>` : "") + ((filters.tech.ram || filters.tech.storage || filters.tech.cond) ? `<span class="chipf">⚡ ${[filters.tech.cond, filters.tech.ram ? filters.tech.ram + "GB RAM" : "", filters.tech.storage ? filters.tech.storage + "GB" : ""].filter(Boolean).join(" · ")} <button onclick="filters.tech={ram:0,storage:0,cond:''};syncFilterUI();renderShop()">✕</button></span>` : "") + (filters.q ? `<span class="chipf">“${filters.q}” <button onclick="setFilter('q','');document.querySelector('#headerSearch').value=''">✕</button></span>` : "");
   $("#shopGrid").innerHTML = list.map(productCard).join("");
   $("#shopEmpty").classList.toggle("hidden", list.length > 0);
 }
@@ -1274,6 +1326,29 @@ function openVendor(id){
   $("#view-vendor").classList.remove("hidden"); $("#view-vendors").classList.add("hidden"); $("#view-home").classList.add("hidden"); $("#view-shop").classList.add("hidden"); $("#view-about").classList.add("hidden");
 }
 
+/* ----- Adaptive product layout: spec grid (tech) vs story (artisan) ----- */
+const SPEC_LABELS = { chip: "Processor", ram: "RAM", storage: "Storage", screen: "Display", battery: "Battery", condition: "Condition" };
+function specGridHTML(p) {
+  const rows = Object.keys(SPEC_LABELS).filter(k => p.specs[k]).map(k =>
+    `<div class="flex justify-between gap-4 py-2.5 border-b border-line last:border-0 text-sm"><span class="text-muted">${SPEC_LABELS[k]}</span><strong class="text-right">${p.specs[k]}</strong></div>`).join("");
+  return `
+    <p class="text-[15px] text-muted leading-relaxed mt-4">${p.desc}</p>
+    <div class="mt-4 rounded-2xl border border-line bg-white overflow-hidden">
+      <p class="f-label !mb-0 px-4 pt-3">⚡ Specifications</p>
+      <div class="px-4 pb-2">${rows}</div>
+    </div>
+    ${p.specs.condition && p.specs.condition !== "New" ? `<p class="text-[12px] mt-2 text-[#0AA5C2] font-semibold">✓ Certified ${p.specs.condition.toLowerCase()} — tested, warranty included.</p>` : ""}`;
+}
+function storyHTML(p, v) {
+  const c = p.craft || {};
+  const rows = [["Materials", c.materials], ["Dimensions", c.dimensions], ["Care", c.care]].filter(([, val]) => val).map(([k, val]) =>
+    `<div class="flex gap-2.5 text-sm py-1.5"><span class="text-muted shrink-0 w-24">${k}</span><span>${val}</span></div>`).join("");
+  return `
+    <p class="text-[15px] text-muted leading-relaxed mt-4">${p.desc}</p>
+    ${rows ? `<div class="mt-4 rounded-2xl border border-line bg-[#FAF6F0] p-4"><p class="f-label !mb-1">❋ From the maker’s bench</p>${rows}</div>` : ""}
+    <p class="text-[13px] text-muted mt-3 italic">Handmade by ${v.name} · ${v.location} — ${v.story ? v.story.split(".")[0] + "." : ""}</p>`;
+}
+
 /* ---------- Product modal ---------- */
 let modalQty = 1, modalVariant = null;
 function openProduct(id){
@@ -1296,8 +1371,8 @@ function openProduct(id){
         </div>
         <h3 class="font-display text-3xl sm:text-4xl leading-tight mt-2">${p.name}</h3>
         <div class="flex items-center gap-2 mt-2 text-sm"><span class="text-[#C8A15A]">${stars(p.rating)}</span><span class="font-semibold">${p.rating}</span><span class="text-muted">· ${p.reviews} reviews · ${p.category}</span></div>
-        <div class="flex items-baseline gap-3 mt-4"><strong class="font-display text-3xl">${money(p.price)}</strong>${p.oldPrice ? `<s class="text-muted">${money(p.oldPrice)}</s><span class="text-xs font-bold bg-[#BC5A28] text-white rounded-full px-2 py-1">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : ""}</div>
-        <p class="text-[15px] text-muted leading-relaxed mt-4">${p.desc}</p>
+        <div class="flex items-baseline gap-3 mt-4"><strong class="font-display text-3xl">${money(p.price)}</strong>${p.oldPrice ? `<s class="text-muted">${money(p.oldPrice)}</s><span class="text-xs font-bold bg-[#BC5A28] text-white rounded-full px-2 py-1">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : ""}${p.specs?.condition ? `<span class="text-xs font-bold ${p.specs.condition === "New" ? "bg-emerald-100 text-emerald-700" : "bg-cyan-100 text-cyan-700"} rounded-full px-2.5 py-1">${p.specs.condition}</span>` : ""}</div>
+        ${p.specs ? specGridHTML(p) : storyHTML(p, v)}
         ${urgencyHTML(p)}
         <p class="text-[13px] mt-1.5">🚚 Order today, get it by <strong>${deliveryDate()}</strong> · <span class="text-muted">Free over ${money(75)}</span></p>
         ${v.dropship ? `<p class="text-[13px] mt-1.5 bg-[#0AA5C2]/10 border border-[#0AA5C2]/30 rounded-xl px-3 py-2">📦 <strong>Dropship:</strong> ships directly from ${v.name} (${v.location}) in 5–9 days. Unbranded packaging on request.</p>` : `<p class="text-[12px] text-muted mt-1">Ships from Abu.Hub hub in 3–6 days, tracked.</p>`}
