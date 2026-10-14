@@ -279,6 +279,28 @@ app.post("/api/chat-ack", (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Promotions shelf (flat-fee featured slots: hot | trending) ---------- */
+const PROMO_RATES = { hot: 9, trending: 19 }; // USD per week
+app.get("/api/promotions", (req, res) => {
+  const db = load();
+  const now = Date.now();
+  const all = (db.promotions || []).map(p => ({ ...p, active: p.starts <= now && p.ends > now }));
+  res.json({ promotions: req.query.active ? all.filter(p => p.active) : all });
+});
+app.post("/api/promotions", auth, (req, res) => {
+  const { productId = "", shelf = "hot", weeks = 1, email = "" } = req.body || {};
+  if (!productId || !PROMO_RATES[shelf]) return res.status(400).json({ error: "productId + shelf (hot|trending) required" });
+  const w = Math.min(4, Math.max(1, Number(weeks) || 1));
+  const now = Date.now();
+  const promo = { id: uid("PR-"), productId, shelf, weeks: w, fee: PROMO_RATES[shelf] * w,
+    email: email || req.user.email, by: req.user.email, status: "pending-invoice",
+    starts: now, ends: now + w * 7 * 864e5, date: new Date().toISOString() };
+  const db = load();
+  db.promotions = db.promotions || [];
+  db.promotions.unshift(promo); persist(db);
+  emit("promo.sold", promo);
+  res.json({ ok: true, promo: { id: promo.id, fee: promo.fee, ends: promo.ends } });
+});
 /* ---------- Escrow release (8% commission ledger hook) ---------- */
 app.post("/api/orders/:ref/release", auth, (req, res) => {
   const db = load();
