@@ -68,14 +68,57 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.get("/api/auth/me", auth, (req, res) => res.json({ user: req.user }));
 
-/* ---------- orders ---------- */
+/* ---------- catalog (read-model seam: static seed today, Postgres/Algolia tomorrow) ---------- */
+let SEED = { vendors: [], products: [] };
+try {
+  const dataJs = fs.readFileSync(path.join(__dirname, "..", "js", "data.js"), "utf8");
+  const sandbox = { VENDORS: null, PRODUCTS: null };
+  new Function("sandbox", dataJs.replace(/const (VENDORS|PRODUCTS)/g, "sandbox.$1") + ";return sandbox;")(sandbox);
+  SEED = { vendors: sandbox.VENDORS || [], products: sandbox.PRODUCTS || [] };
+} catch { SEED = { vendors: [], products: [] }; }
+app.get("/api/vendors", (req, res) => res.json({ vendors: SEED.vendors }));
+app.get("/api/products", (req, res) => {
+  let list = [...SEED.products];
+  const { q = "", category = "", vendor = "", dropship = "", sort = "" } = req.query;
+  if (q) { const s = q.toLowerCase(); list = list.filter(p => (p.name + " " + p.category).toLowerCase().includes(s)); }
+  if (category) list = list.filter(p => p.category === category);
+  if (vendor) list = list.filter(p => p.vendorId === vendor);
+  if (dropship === "true") { const ids = new Set(SEED.vendors.filter(v => v.dropship).map(v => v.id)); list = list.filter(p => ids.has(p.vendorId)); }
+  if (sort === "low") list.sort((a, b) => a.price - b.price);
+  if (sort === "high") list.sort((a, b) => b.price - a.price);
+  if (sort === "rating") list.sort((a, b) => b.rating - a.rating);
+  res.json({ products: list, total: list.length });
+});
+
+/* ---------- orders (IDEMPOTENT: same key twice = one order, never double-billed) ---------- */
 app.post("/api/orders", auth, (req, res) => {
   const { items = [], total = 0, method = "", ref = "", contact = {} } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Empty order" });
+  const key = (req.headers["idempotency-key"] || ref || "").toString();
   const db = load();
-  const order = { ref: ref || uid("AH-"), email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, date: new Date().toISOString() };
+  if (key) {
+    const dup = db.orders.find(o => o.ref === key || o.key === key);
+    if (dup) return res.json({ ok: true, deduped: true, order: { ref: dup.ref, total: dup.total } });
+  }
+  const order = { ref: ref || uid("AH-"), key: key || undefined, email: req.user.email, name: req.user.name, items, total, method, contact, verified: false, date: new Date().toISOString() };
   db.orders.unshift(order); persist(db);
   res.json({ ok: true, order: { ref: order.ref, total: order.total } });
+});
+
+/* ---------- server cart (distributed state: phone ↔ desktop sync when logged in) ---------- */
+app.get("/api/cart", auth, (req, res) => {
+  const db = load();
+  res.json({ cart: (db.carts || {})[req.user.id] || [] });
+});
+app.put("/api/cart", auth, (req, res) => {
+  const { cart = [], updated = 0 } = req.body || {};
+  if (!Array.isArray(cart)) return res.status(400).json({ error: "Bad cart" });
+  const db = load();
+  db.carts = db.carts || {};
+  const prev = db.carts[req.user.id];
+  if (!prev || (updated || 0) >= (prev.updated || 0)) db.carts[req.user.id] = { items: cart.slice(0, 100), updated: updated || Date.now() };
+  persist(db);
+  res.json({ ok: true, cart: db.carts[req.user.id].items });
 });
 
 app.get("/api/orders", auth, (req, res) => {
