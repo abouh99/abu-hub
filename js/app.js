@@ -91,9 +91,6 @@ const COUPONS = {
   KARIBU5: { pct: 5, min: 0, label: "5% off, karibu!" }
 };
 function couponFor(code) { return COUPONS[String(code || "").trim().toUpperCase()]; }
-/* ---------- WhatsApp support ---------- */
-const SUPPORT_WA = "255753026506"; // shop WhatsApp (Dar es Salaam)
-
 /* ---------- Unified catalog: seed + seller-uploaded products ---------- */
 let ALL_PRODUCTS = [...PRODUCTS];
 const SELLER_SHOPS = {};
@@ -708,7 +705,7 @@ const save = () => {
 /* ---------- Routing ---------- */
 function go(view, cat) {
   $$(".view").forEach(v => v.classList.add("hidden"));
-  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about", sell: "view-sell", seller: "view-seller" };
+  const map = { home: "view-home", shop: "view-shop", vendors: "view-vendors", vendor: "view-vendor", about: "view-about", sell: "view-sell", seller: "view-seller", messages: "view-messages" };
   $("#" + (map[view] || "view-home")).classList.remove("hidden");
   $("#mobileNav").classList.add("hidden");
   if (cat) { filters.cats = [cat]; syncFilterUI(); }
@@ -716,6 +713,7 @@ function go(view, cat) {
   if (view === "vendors") renderVendors();
   if (view === "sell") renderSell();
   if (view === "seller") renderSellerHub();
+  if (view === "messages") { renderThreads(); renderMsgs(); startPoll(); } else stopPoll();
   $$("#mobileTabs .mtab").forEach(b => b.classList.toggle("on", b.dataset.tab === view || (view === "vendor" && b.dataset.tab === "shop")));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeAll(true);
@@ -808,7 +806,7 @@ function renderHome() {
     <div class="bg-white border border-line rounded-3xl p-6"><p class="text-gold tracking-tight">★★★★★</p>
     <p class="mt-3 leading-relaxed text-[15px]">“${r.t}”</p>
     <div class="flex items-center gap-3 mt-5"><img src="${r.img}" class="w-10 h-10 rounded-full object-cover" alt="" /><div><strong class="text-sm block">${r.n}</strong><span class="text-xs text-muted">Verified buyer · ${r.p}</span></div></div></div>`).join("");
-  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount(); renderCoupons(); renderRecent(); renderMoods();
+  renderHot(); renderRanking(); renderDeals(); renderOrigins(); renderRfqCount(); renderCoupons(); renderRecent(); renderMoods(); renderRecommended();
 }
 function setTrend(c){ trendCat = c; renderHome(); }
 
@@ -821,7 +819,8 @@ function renderHot(){
     </div>`).join("");
 }
 function hotSearch(term){
-  filters = { q: term, cats: [], max: 600, minRating: 0, vendors: [], sort: "featured" };
+  trackEv("search", { q: term });
+  filters = { q: term, cats: [], max: 600, minRating: 0, vendors: [], dropship: false, tech: { ram: 0, storage: 0, cond: "" }, sort: "featured" };
   syncFilterUI(); go("shop");
 }
 
@@ -896,6 +895,86 @@ function goOrigin(country){
   toast(`Showing handmade goods from ${country} ${ (typeof ORIGIN_FLAGS !== "undefined" && ORIGIN_FLAGS[country]) || ""}`);
 }
 
+/* ---------- Behavior tracker + recommender (client AI: personas, affinity, cross-sell) ---------- */
+function trackEv(type, data = {}) {
+  try {
+    const b = JSON.parse(localStorage.getItem("abuhub_behave") || '{"views":[],"searches":[],"cats":{},"tech":0,"artisan":0,"last":0}');
+    b.last = Date.now();
+    if (type === "view") {
+      b.views.unshift({ id: data.id, t: Date.now(), dwell: 0 });
+      b.views = b.views.slice(0, 50);
+      const p = productById(data.id);
+      if (p) {
+        b.cats[p.category] = (b.cats[p.category] || 0) + 1;
+        (isTechCat(p.category) ? (b.tech++, 0) : (b.artisan++, 0));
+      }
+    }
+    if (type === "search" && data.q) { b.searches.unshift(data.q.slice(0, 60)); b.searches = b.searches.slice(0, 20); }
+    if (type === "cart" && data.id) {
+      const p = productById(data.id);
+      if (p) { b.cats[p.category] = (b.cats[p.category] || 0) + 3; isTechCat(p.category) ? b.tech += 3 : b.artisan += 3; }
+    }
+    localStorage.setItem("abuhub_behave", JSON.stringify(b));
+  } catch {}
+  if (API_BASE) api("/api/track", { method: "POST", body: JSON.stringify({ type, data, sid: mySid() }) }).catch(() => null);
+}
+function mySid() {
+  let s = localStorage.getItem("abuhub_sid");
+  if (!s) { s = "S" + Math.random().toString(36).slice(2, 10); localStorage.setItem("abuhub_sid", s); }
+  return s;
+}
+function behave() {
+  try { return JSON.parse(localStorage.getItem("abuhub_behave") || '{"views":[],"searches":[],"cats":{},"tech":0,"artisan":0,"last":0}'); }
+  catch { return { views: [], searches: [], cats: {}, tech: 0, artisan: 0, last: 0 }; }
+}
+function persona() {
+  const b = behave();
+  if (b.tech + b.artisan < 3) return null;
+  return b.tech > b.artisan * 1.5 ? "tech" : b.artisan > b.tech * 1.5 ? "artisan" : "mixed";
+}
+function affinityScore(p) {
+  const b = behave();
+  let s = p.rating * 10 + Math.log10(1 + p.reviews) * 20;
+  s += (b.cats[p.category] || 0) * 15;
+  const per = persona();
+  if (per === "tech" && isTechCat(p.category)) s += 40;
+  if (per === "artisan" && !isTechCat(p.category)) s += 40;
+  if (promoFor(p.id)) s += 60;
+  return s;
+}
+function recommended(n = 8) {
+  const seen = new Set([...(behave().views.map(v => v.id)), ...cart.map(l => l.id), ...wishlist]);
+  return [...ALL_PRODUCTS].sort((a, b) => affinityScore(b) - affinityScore(a)).filter(p => !seen.has(p.id)).slice(0, n);
+}
+/* Tech → artisan cross-sell: sleeve/tote, desk organizer, desk tools */
+const CROSS_SELL = { tech: ["p22", "p2", "p24", "p16"], default: ["p25", "p1", "p11"] };
+function crossSell() {
+  const hasTech = cart.some(l => { const p = productById(l.id); return p && isTechCat(p.category); });
+  const ids = hasTech ? CROSS_SELL.tech : CROSS_SELL.default;
+  const inCart = new Set(cart.map(l => l.id));
+  return ids.map(productById).filter(p => p && !inCart.has(p.id)).slice(0, 3);
+}
+function crossSellHTML() {
+  const items = crossSell();
+  if (!items.length) return "";
+  return `<p class="f-label mt-5 !mb-2">✦ Complete your setup</p>` + items.map(p => `
+    <div class="flex gap-3 bg-white border border-dashed border-gold rounded-2xl p-2.5 items-center">
+      <img src="${p.img}" onclick="openProduct('${p.id}')" class="w-12 h-14 rounded-xl object-cover cursor-pointer shrink-0" alt="" />
+      <div class="flex-1 min-w-0"><p class="text-[13px] font-semibold line-clamp-1">${p.name}</p><strong class="text-[13px]">${money(p.price)}</strong></div>
+      <button onclick="addToCart('${p.id}')" class="text-xs font-bold bg-ink text-cream rounded-full px-3 py-2 whitespace-nowrap">+ Add</button>
+    </div>`).join("");
+}
+/* Abandonment: cart + 30min silence → assistant thread nudge */
+function checkAbandonment() {
+  if (!cart.length) return;
+  const b = behave();
+  if (b.last && Date.now() - b.last > 30 * 60 * 1000 && !localStorage.getItem("abuhub_abandoned_" + cart.reduce((s, l) => s + l.id, ""))) {
+    localStorage.setItem("abuhub_abandoned_" + cart.reduce((s, l) => s + l.id, ""), "1");
+    sysThreadSay(`Your basket misses you 🧺 — ${cart.length} item(s), ${money(cartSubtotal())}. Complete it before stock runs out!`);
+    toast("Psst — you left items in your basket 🧺", "warn");
+  }
+}
+
 /* ----- Recently viewed (Amazon-style) ----- */
 function pushRecent(id) {
   let r = JSON.parse(localStorage.getItem("abuhub_recent") || "[]").filter(x => x !== id);
@@ -903,6 +982,20 @@ function pushRecent(id) {
   localStorage.setItem("abuhub_recent", JSON.stringify(r));
 }
 function clearRecent() { localStorage.setItem("abuhub_recent", "[]"); renderRecent(); }
+function renderRecommended() {
+  const w = $("#recoWrap"), row = $("#recoRow"); if (!w || !row) return;
+  const items = recommended(8), per = persona();
+  w.classList.toggle("hidden", !items.length);
+  const tag = $("#personaTag");
+  if (tag) tag.textContent = per === "tech" ? "· tech enthusiast" : per === "artisan" ? "· craft collector" : "";
+  row.innerHTML = items.map(p => `
+    <div class="rank-card" onclick="openProduct('${p.id}')">
+      <img loading="lazy" src="${p.img}" alt="${p.name}" />
+      <div class="p-3"><p class="text-[13px] font-semibold line-clamp-1">${p.name}</p>
+      <p class="text-xs mt-0.5"><span class="text-[#C8A15A]">★ ${p.rating}</span></p>
+      <strong class="text-sm">${money(p.price)}</strong></div>
+    </div>`).join("");
+}
 function renderRecent() {
   const w = $("#recentWrap"), row = $("#recentRow"); if (!w || !row) return;
   const ids = JSON.parse(localStorage.getItem("abuhub_recent") || "[]").map(productById).filter(Boolean);
@@ -950,7 +1043,7 @@ function trackOrder() {
       <div class="flex items-center mt-3">${steps.map((s, i) => `
         <div class="flex-1 text-center"><div class="w-7 h-7 mx-auto rounded-full grid place-items-center text-xs font-bold ${i < stage ? "bg-emerald-500 text-white" : "bg-line text-muted"}">${i < stage ? "✓" : i + 1}</div>
         <p class="text-[11px] mt-1 ${i < stage ? "font-bold" : "text-muted"}">${s}</p></div>${i < 3 ? `<div class="flex-1 h-0.5 -mt-6 ${i < stage - 1 ? "bg-emerald-500" : "bg-line"}"></div>` : ""}`).join("")}</div>
-      <p class="text-xs text-muted mt-3">Makers ship in 1–2 days · tracked 3–6 day delivery · need help? <a class="underline font-semibold" target="_blank" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! Order " + o.ref)}">WhatsApp us</a></p>
+      <p class="text-xs text-muted mt-3">Makers ship in 1–2 days · tracked 3–6 day delivery · need help? <a class="underline font-semibold" href="#" onclick="closeAll();openThread('support','Order ${o.ref}');return false;">message us in-app</a></p>
     </div>`;
 }
 
@@ -969,12 +1062,9 @@ function protectContinue() {
   a.unshift(ack); localStorage.setItem("abuhub_chatack", JSON.stringify(a.slice(0, 50)));
   if (API_BASE) api("/api/chat-ack", { method: "POST", body: JSON.stringify({ vendor: id }) }).catch(() => null);
   closeAll();
-  const isVirtual = id && id.startsWith("s-");
-  const url = (API_BASE && !isVirtual)
-    ? API_BASE + "/api/vendors/" + id + "/chat?text=" + encodeURIComponent("Hi " + v.name + "! I found you on Abu.Hub.")
-    : "https://wa.me/" + SUPPORT_WA + "?text=" + encodeURIComponent("Hi Abu.Hub! Connect me to " + v.name + ".");
-  window.open(url, "_blank");
-  toast("Chat opened — pay through Abu.Hub checkout to keep your guarantee ✓");
+  if (!_authUser) { openAuth(); toast("Sign in to message makers — free.", "warn"); return; }
+  openThread(id, "Chat with " + v.name);
+  toast("Chat opened in-app — pay through checkout to keep your guarantee ✓");
 }
 function protectCheckout() { closeAll(); openCart(); }
 
@@ -1249,6 +1339,131 @@ async function delProduct(id) {
   toast("Product deleted.");
 }
 
+/* ----- Sandboxed inbox (no external numbers, ever) ----- */
+const WARN_TEXT = "⚠️ Safety notice: sharing phone numbers, bank details or arranging off-platform payment forfeits your 30-Day Money-Back Guarantee and tracking. Keep payment inside Abu.Hub escrow to stay protected.";
+const useAPImsg = () => API_BASE && API_TOKEN;
+function scanClient(t) {
+  const out = [];
+  if (/\+?\d[\d\s.\-()]{6,}\d/.test(t)) out.push("phone");
+  if (/(m-?pesa|tigo|airtel|halo|mixx|bank|account|iban|swift)/i.test(t)) out.push("payment");
+  if (/(whatsapp|telegram|signal|\bdm\b|call me|text me|off.?platform|outside|direct)/i.test(t)) out.push("offplatform");
+  return out;
+}
+function localThreads() { try { return JSON.parse(localStorage.getItem("abuhub_threads") || "[]"); } catch { return []; } }
+function saveLocalThreads(t) { localStorage.setItem("abuhub_threads", JSON.stringify(t.slice(0, 60))); }
+function threadName(vendor) {
+  if (vendor === "support") return "Abu.Hub Support";
+  if (vendor === "assistant") return "Abu.Hub Assistant";
+  const v = vendorById(vendor);
+  return v ? v.name : "Shop chat";
+}
+async function getThreads() {
+  if (useAPImsg()) { try { return (await api("/api/threads")).threads; } catch {} }
+  return localThreads();
+}
+async function ensureThread(vendor, subject) {
+  const ts = await getThreads();
+  let t = ts.find(x => x.vendor === vendor);
+  if (t) return t;
+  if (useAPImsg()) { try { return (await api("/api/threads", { method: "POST", body: JSON.stringify({ vendor, subject }) })).thread; } catch {} }
+  t = { id: "TH-" + Date.now().toString(36).toUpperCase(), vendor, subject: subject || "Chat", messages: [], seen: 0, date: new Date().toISOString() };
+  const all = [t, ...ts]; saveLocalThreads(all);
+  return t;
+}
+async function getMsgs(id) {
+  if (useAPImsg()) { try { return (await api("/api/threads/" + id + "/messages")).messages; } catch {} }
+  const t = localThreads().find(x => x.id === id);
+  return t ? t.messages : [];
+}
+async function postMsg(id, text) {
+  if (useAPImsg()) { try { return await api("/api/threads/" + id + "/messages", { method: "POST", body: JSON.stringify({ text }) }); } catch {} }
+  const ts = localThreads(), t = ts.find(x => x.id === id);
+  if (!t) return null;
+  const m = { from: (_authUser || {}).email || "guest", text, date: new Date().toISOString(), flags: scanClient(text) };
+  t.messages.push(m);
+  if (m.flags.length) t.messages.push({ from: "system", system: true, text: WARN_TEXT, date: new Date().toISOString() });
+  saveLocalThreads(ts);
+  return { message: m, flagged: m.flags.length > 0 };
+}
+let _activeThread = null, _poll = null;
+function openInbox() {
+  if (!_authUser) { openAuth(); toast("Sign in to use Messages — free.", "warn"); return; }
+  go("messages");
+}
+async function openThread(vendor, subject) {
+  if (!_authUser) { openAuth(); toast("Sign in to message makers — free.", "warn"); return; }
+  const t = await ensureThread(vendor, subject);
+  _activeThread = t.id;
+  go("messages");
+  renderThreads(); selectThread(t.id); startPoll();
+}
+function stopPoll() { clearInterval(_poll); _poll = null; }
+function startPoll() {
+  stopPoll();
+  _poll = setInterval(() => { if (!$("#view-messages").classList.contains("hidden")) { renderThreads(true); if (_activeThread) renderMsgs(true); } }, 6000);
+}
+async function renderThreads(silent) {
+  const box = $("#threadList"); if (!box) return;
+  const ts = await getThreads();
+  const dot = $("#msgDot");
+  const unreadTotal = ts.reduce((s, t) => s + (t.unread || Math.max(0, (t.messages || []).length - (t.seen || 0))), 0);
+  if (dot) { dot.textContent = ""; dot.classList.toggle("hidden", !unreadTotal); }
+  box.innerHTML = ts.map(t => {
+    const msgs = t.messages || [];
+    const last = msgs[msgs.length - 1];
+    const unread = t.unread ?? Math.max(0, msgs.length - (t.seen || 0));
+    return `<button onclick="selectThread('${t.id}')" class="thread-row ${t.id === _activeThread ? "on" : ""}">
+      <span class="w-10 h-10 rounded-full bg-ink text-cream grid place-items-center font-bold shrink-0">${threadName(t.vendor)[0]}</span>
+      <span class="min-w-0 flex-1"><strong class="block text-sm truncate">${threadName(t.vendor)} ${unread ? "●" : ""}</strong>
+      <span class="block text-xs text-muted truncate">${last ? last.text.slice(0, 42) : t.subject || "No messages yet"}</span></span>
+    </button>`;
+  }).join("") || `<p class="text-sm text-muted text-center py-8">No conversations yet.<br>Message a maker to start one ✦</p>`;
+  if (!silent && ts.length && !_activeThread) selectThread(ts[0].id);
+}
+async function selectThread(id) {
+  _activeThread = id;
+  $$("#threadList .thread-row").forEach(() => {});
+  await renderThreads(true);
+  renderMsgs();
+  const ts = localThreads();
+  const t = ts.find(x => x.id === id);
+  if (t && !useAPImsg()) { t.seen = (t.messages || []).length; saveLocalThreads(ts); }
+}
+function msgBubble(m) {
+  if (m.system) return `<div class="msg-sys">${m.text}</div>`;
+  const mine = _authUser && m.from === _authUser.email;
+  return `<div class="${mine ? "msg-user" : "msg-bot"}">${m.text}</div>`;
+}
+async function renderMsgs(keepScroll) {
+  const box = $("#threadMsgs"), head = $("#threadHead");
+  if (!box) return;
+  if (!_activeThread) { head.textContent = "Select a conversation"; box.innerHTML = ""; return; }
+  const ts = await getThreads();
+  const t = ts.find(x => x.id === _activeThread);
+  if (!t) { _activeThread = null; renderThreads(); return; }
+  head.textContent = threadName(t.vendor);
+  const msgs = await getMsgs(_activeThread);
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  box.innerHTML = msgs.map(msgBubble).join("") || `<p class="text-sm text-muted text-center py-6">Say hi — makers usually reply within a day ✦<br><span class="text-xs">Protected: never share numbers or pay outside checkout.</span></p>`;
+  if (!keepScroll || nearBottom) box.scrollTop = box.scrollHeight;
+}
+async function sendThreadMsg(e) {
+  e.preventDefault();
+  const inp = $("#threadIn"), text = inp.value.trim();
+  if (!text || !_activeThread) return;
+  inp.value = "";
+  const r = await postMsg(_activeThread, text);
+  renderMsgs();
+  if (r && r.flagged) toast("Safety filter tripped — see the in-chat warning ⚠️", "warn");
+}
+function sysThreadSay(text) {
+  let ts = localThreads();
+  let t = ts.find(x => x.vendor === "assistant");
+  if (!t) { t = { id: "TH-ASSIST", vendor: "assistant", subject: "Assistant", messages: [], seen: 0, date: new Date().toISOString() }; ts.unshift(t); }
+  t.messages.push({ from: "assistant", text, date: new Date().toISOString() });
+  saveLocalThreads(ts);
+}
+
 /* ----- In-app chat assistant ----- */
 let _chatOpened = false;
 function toggleChat(force) {
@@ -1286,28 +1501,61 @@ function botSay(html) {
 function scrollChat() { const m = $("#chatMsgs"); m.scrollTop = m.scrollHeight; }
 function botReply(raw) {
   const t = raw.toLowerCase();
-  const wa = (msg) => `<a target="_blank" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(msg)}">WhatsApp us →</a>`;
+  const inApp = (msg) => `<a href="#" onclick="closeAll();openThread('support','Help request');return false;">message us in-app →</a>`;
+  const risk = scanClient(raw);
+  const safeNote = risk.length ? `<br><br>⚠️ I noticed contact/payment details — keep them inside Abu.Hub: off-platform deals forfeit your guarantee.` : "";
+  const logTrip = () => {
+    try {
+      const w = JSON.parse(localStorage.getItem("abuhub_tripwire") || "[]");
+      w.unshift({ text: raw.slice(0, 120), hits: risk, date: new Date().toISOString() });
+      localStorage.setItem("abuhub_tripwire", JSON.stringify(w.slice(0, 50)));
+    } catch {}
+    if (API_BASE) api("/api/chat-ack", { method: "POST", body: JSON.stringify({ vendor: "tripwire:" + risk.join(",") }) }).catch(() => null);
+  };
+  const ref = raw.toUpperCase().match(/AH-[A-Z0-9]{3,}/);
+  if (ref) {
+    closeAll(); openTrack();
+    setTimeout(() => { $("#trackIn").value = ref[0]; trackOrder(); }, 150);
+    return;
+  }
+  if (/^(sw|swahili|kiswahili)$/.test(t.trim())) { setLang("sw"); botSay("Nimebadilisha lugha 🇹🇿 Uliza chochote — ufuatiliaji, malipo, punguzo."); return; }
+  if (/^(en|english)$/.test(t.trim())) { setLang("en"); botSay("Language set to English ✓ Ask me anything."); return; }
+  if (/^(fr|french|fran)/.test(t.trim())) { setLang("fr"); botSay("Langue : français ✓ Posez-moi vos questions."); return; }
+  if (/(language|lugha|kiswahili|swahili|fran)/.test(t)) {
+    botSay(`🌍 I speak <button class="link-more" onclick="setLang('en')">English</button> · <button class="link-more" onclick="setLang('sw')">Kiswahili</button> · <button class="link-more" onclick="setLang('fr')">Français</button> — tap one, or just type <strong>sw</strong>.${safeNote}`);
+    return;
+  }
+  if (/(fee|commission|8%|charge|percent|tier|pro cost|how much.*sell)/.test(t)) {
+    botSay(`💰 Simple math: <strong>listing $0</strong> · <strong>8% max commission</strong> on sales only (you keep 92%) · ◆ Pro $9/mo · Elite $29/mo · promo pins $9–19/wk. Full plans on the <button class="link-more" onclick="closeAll();go('sell')">Sell page</button>.${safeNote}`);
+    return;
+  }
+  if (/(onboard|join.*sell|how.*become|start.*shop|seller.*account)/.test(t)) {
+    botSay(`🚀 3 steps: 1) <button class="link-more" onclick="closeAll();openAuth()">Create account</button> 2) Open <strong>Seller hub</strong> 3) Add product with photo → live after review. Full guide + calculator on the <button class="link-more" onclick="closeAll();go('sell')">Sell page</button>.${safeNote}`);
+    return;
+  }
+  if (risk.length && /(human|agent|person|help|support|contact)/.test(t)) { logTrip(); botSay(`💬 Talk to us ${inApp()} — humans reply 8am–10pm EAT. And remember: ${WARN_TEXT}`); return; }
+  if (risk.length) { logTrip(); botSay(`${WARN_TEXT}<br><br>How else can I help — <strong>tracking, fees, selling or discounts</strong>?`); return; }
   if (/(track|where.*order|status|delivery status)/.test(t)) {
     const orders = JSON.parse(localStorage.getItem("abuhub_orders") || "[]");
     botSay(orders.length
-      ? `Your latest order is <strong>${orders[0].ref}</strong> (${money(orders[0].total)}). Tap <strong>📦 Track</strong> in the menu and enter the ref for the live timeline.`
-      : `No orders on this device yet. After checkout you'll get a ref like <strong>AH-XXXXXX</strong> — paste it into <strong>📦 Track</strong> anytime.`);
+      ? `Your latest order is <strong>${orders[0].ref}</strong> (${money(orders[0].total)}). Tap <strong>📦 Track</strong> in the menu — or just type the ref like <strong>AH-XXXXXX</strong> here and I'll pull it up.`
+      : `No orders on this device yet. After checkout you'll get a ref like <strong>AH-XXXXXX</strong> — paste it here or into <strong>📦 Track</strong> anytime.`);
     return;
   }
   if (/(ship|deliver|cost.*send|how long)/.test(t)) {
     botSay(`🚚 Tracked delivery in <strong>3–6 days</strong>. Shipping is <strong>${money(6.95)}</strong> — <strong>FREE over ${money(75)}</strong>. Makers dispatch in 1–2 days.`);
     return;
   }
-  if (/(return|refund|exchange|wrong|damaged|broken)/.test(t)) {
-    botSay(`↩️ <strong>30-day money-back guarantee.</strong> Wrong, damaged or not-as-described? Prepaid return label + full refund. Just ${wa("Hi Abu.Hub! I need a return.")} with your order ref.`);
+  if (/(return|refund|exchange|wrong|damaged|broken|guarantee|policy)/.test(t)) {
+    botSay(`↩️ <strong>30-day money-back guarantee</strong> — our core rule: wrong, damaged or not-as-described means prepaid return label + full refund, <em>but only for orders paid through Abu.Hub escrow checkout.</em> Open a thread via ${inApp()} with your order ref to start a return.`);
     return;
   }
   if (/(discount|coupon|promo|code|offer|sale|deal)/.test(t)) {
     botSay(`🏷️ Active codes: <strong>ABUHUB10</strong> (−10%), <strong>MAKER15</strong> (−15% over ${money(100)}), <strong>KARIBU5</strong> (−5%). Tap them in the sale banner to copy — I applied nothing yet, add yours at checkout.`);
     return;
   }
-  if (/(pay|mpesa|m-pesa|mobile|card|cash|delivery.*pay|flutterwave)/.test(t)) {
-    botSay(`💳 We accept cards, Mobile Money & bank via Flutterwave/Paystack, PayPal, Stripe — or <strong>Cash / M-Pesa on delivery</strong> at checkout. 100% buyer protection on every order.`);
+  if (/(pay|mpesa|m-pesa|mobile|card|cash|delivery.*pay|flutterwave|escrow)/.test(t)) {
+    botSay(`💳 Cards, Mobile Money & bank via Flutterwave/Paystack, PayPal, Stripe — or <strong>Cash / M-Pesa on delivery</strong>. Every in-checkout payment sits in <strong>escrow</strong>: released to the seller only when you're covered. 100% buyer protection.`);
     return;
   }
   if (/(custom|bespoke|tailor|bulk|wedding|request)/.test(t)) {
@@ -1315,26 +1563,26 @@ function botReply(raw) {
     return;
   }
   if (/(sell|vendor|shop.*open|become.*seller)/.test(t)) {
-    botSay(`🛍️ Opening a shop is <strong>free</strong> — $0 listing fees, 8% max commission, live in 24h. Tap <strong>Sell on Abu.Hub</strong> up top.`);
+    botSay(`🛍️ Opening a shop is <strong>free</strong> — $0 listing fees, 8% max commission, live in 24h. Start on the <button class="link-more" onclick="closeAll();go('sell')">Sell page</button> (calculator + invite rewards inside).`);
     return;
   }
   if (/(dropship|drop ship|resell|reseller|wholesale|no stock|without stock)/.test(t)) {
     botSay(`📦 Yes! <strong>Dropship partners</strong> ship straight to your customer — you never hold stock. Look for the <strong>📦 SHIPS FROM MAKER</strong> tag, filter it in Shop → Filters, and keep your margin. Makers handle packing in unbranded boxes.`);
     return;
   }
-  if (/(human|agent|person|call|phone|whatsapp|help|support)/.test(t)) {
-    botSay(`💬 A human is one tap away: ${wa("Hi Abu.Hub! I need help.")} We usually reply within the hour, 8am–10pm EAT.`);
+  if (/(human|agent|person|help|support)/.test(t)) {
+    botSay(`💬 A human is one tap away: ${inApp()} We usually reply within the hour, 8am–10pm EAT. For makers: message them from their shop page — it stays protected in-app.`);
     return;
   }
   if (/(hi|hello|hey|mambo|habari|morning|evening)/.test(t)) {
-    botSay(`Hello! 👋 Ask me about <strong>tracking, shipping, returns, discounts</strong> — or type <strong>human</strong> anytime.`);
+    botSay(`Hello! 👋 Ask me about <strong>tracking, fees, selling, shipping, returns, discounts</strong> — type a ref like <strong>AH-XXXXXX</strong>, or type <strong>sw</strong> for Kiswahili.`);
     return;
   }
   if (/(thank|asante|shukran|great|bye)/.test(t)) {
     botSay(`Karibu sana! ✦ Anything else — or tap 🛍️ to keep shopping.`);
     return;
   }
-  botSay(`Got it — for that one a human helps best: ${wa("Hi Abu.Hub! " + raw.slice(0, 120))} Or try asking about <strong>orders, shipping, returns or discounts</strong>.`);
+  botSay(`Got it — a human helps best here: ${inApp()} Or try <strong>tracking, fees, selling, shipping or discounts</strong>.`);
 }
 
 /* ----- Alibaba-style: RFQ custom orders ----- */
@@ -1383,7 +1631,7 @@ function setFilter(k, v){ if (k === "max") $("#priceVal").textContent = money(Nu
 function clearFilters(){ filters = { q: "", cats: [], max: 600, minRating: 0, vendors: [], dropship: false, tech: { ram: 0, storage: 0, cond: "" }, sort: "featured" }; $("#headerSearch").value = ""; syncFilterUI(); renderShop(); }
 function toggleFilters(){ $("#filterPanel").classList.toggle("hidden"); }
 function toggleDropship(){ filters.dropship = !filters.dropship; syncFilterUI(); renderShop(); toast(filters.dropship ? "Showing ships-from-maker goods only 📦" : "Showing all goods"); }
-function onHeaderSearch(v){ filters.q = v; if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
+function onHeaderSearch(v){ filters.q = v; trackEv("search", { q: v }); if (!$("#view-shop").classList.contains("hidden")) { $("#shopSearch").value = v; renderShop(); } else if (v.length > 1) { go("shop"); $("#shopSearch").value = v; syncFilterUI(); renderShop(); } }
 
 function filteredProducts() {
   let list = [...ALL_PRODUCTS];
@@ -1490,8 +1738,18 @@ function storyHTML(p, v) {
 
 /* ---------- Product modal ---------- */
 let modalQty = 1, modalVariant = null;
+let _viewPid = null, _viewT0 = 0;
 function openProduct(id){
   const p = productById(id); if (!p) return;
+  try {
+    if (_viewPid && _viewT0) {
+      const b = JSON.parse(localStorage.getItem("abuhub_behave") || "{}");
+      const v = (b.views || []).find(x => x.id === _viewPid && !x.dwell);
+      if (v) { v.dwell = Math.round((Date.now() - _viewT0) / 1000); localStorage.setItem("abuhub_behave", JSON.stringify(b)); }
+    }
+  } catch {}
+  _viewPid = id; _viewT0 = Date.now();
+  trackEv("view", { id });
   pushRecent(id);
   const v = vendorById(p.vendorId) || virtualVendor(p.vendorId, "Independent maker");
   modalQty = 1; modalVariant = p.colors[0];
@@ -1563,6 +1821,7 @@ function refreshDynamic(){
 function quickAdd(id){ addToCart(id, false, 1); openCart(); }
 function addToCart(id, fromModal = false, qty = null){
   const q = qty || (fromModal ? modalQty : 1);
+  trackEv("cart", { id });
   const variant = fromModal ? modalVariant : (productById(id).colors[0]);
   const line = cart.find(l => l.id === id && l.variant === variant);
   line ? line.qty = Math.min(9, line.qty + q) : cart.push({ id, qty: q, variant });
@@ -1597,7 +1856,7 @@ function renderCartItems(){
       </div>
       <button onclick="removeLine(${i})" class="text-muted hover:text-red-600 text-lg self-start">×</button>
     </div>`;
-  }).join("");
+  }).join("") + crossSellHTML();
   const sub = cartSubtotal();
   const ship = sub === 0 ? 0 : (sub >= 75 ? 0 : 6.95);
   $("#cartSub").textContent = money(sub);
@@ -2002,6 +2261,6 @@ document.documentElement.lang = lang;
 setTheme(theme); captureSellRef();
 observeLang(); if (lang !== "en") setTimeout(applyLang, 300);
 refreshRates(); fetchPromos().then(() => refreshDynamic()); fetchTiers().then(() => refreshCatalog()).then(() => refreshDynamic());
-$("#waFloat").href = `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("Hi Abu.Hub! I need help with my order.")}`;
+checkAbandonment();
 window.addEventListener("load", () => setTimeout(initAuth, 400));
 initAuth();
