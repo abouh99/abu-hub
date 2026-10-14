@@ -729,6 +729,20 @@ tailwind.config = {
   </div>
 </div>
 
+<!-- Protection disclaimer (anti-disintermediation) -->
+<div id="protectModal" class="modal hidden">
+  <div class="modal-card max-w-md p-8">
+    <button onclick="closeAll()" class="x-btn float-right">✕</button>
+    <p class="eyebrow">Stay protected</p>
+    <h3 class="font-display text-3xl leading-tight">Chat with <span id="protectVendor">this maker</span>?</h3>
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm leading-relaxed mt-4">
+      ⚠️ Deals closed <strong>outside Abu.Hub checkout</strong> (direct calls, private M-Pesa) <strong>forfeit your 30-Day Money-Back Guarantee, order tracking, and buyer protection.</strong> Always finalize payment through Abu.Hub escrow.
+    </div>
+    <button onclick="protectContinue()" class="btn-ink w-full mt-4">I understand — continue to chat →</button>
+    <button onclick="protectCheckout()" class="btn-line w-full mt-2">🔒 Pay securely through Abu.Hub instead</button>
+  </div>
+</div>
+
 <!-- Track order modal -->
 <div id="trackModal" class="modal hidden">
   <div class="modal-card max-w-md p-8">
